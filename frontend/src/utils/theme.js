@@ -17,6 +17,10 @@ const luminance = ([r, g, b]) => {
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 };
 
+// The accent paints buttons, links and highlights on a light background. Pick something
+// near-white (#ffffff was tried) and all of those become unreadable, so warn before saving.
+export const isAccentTooLight = (hex) => luminance(hexToRgb(hex)) > 0.72;
+
 export const resolveMode = (mode) => {
   if (mode === "system") return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   return mode === "dark" ? "dark" : "light";

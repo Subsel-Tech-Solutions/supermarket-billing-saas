@@ -28,7 +28,7 @@ import {
 import { adminAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useSettings } from "../../context/SettingsContext";
-import { applyTheme } from "../../utils/theme";
+import { applyTheme, isAccentTooLight } from "../../utils/theme";
 import { formatCurrency, formatDate, formatDateTime, getErrorMessage, num, ROLE_LABELS, ymd } from "../../utils/helpers";
 import AccountPanel from "../shared/AccountPanel";
 import { Page, SectionHeader, Modal, Field, Grid, Toggle, Spinner, Table, Th, Td, Pill, SearchInput, PageLoader, EmptyState, MiniStat } from "../shared/UI";
@@ -1011,8 +1011,9 @@ function PlatformSettings({ only = "settings" }) {
       const r = await adminAPI.updateSettings(form);
       setForm(r.data.data.settings);
       setPlatform((p) => ({ ...p, ...r.data.data.settings }));
-      // The admin panel is a platform screen, so show the new brand colour right away
-      applyTheme({ themeMode: r.data.data.settings.defaultThemeMode, accentColor: r.data.data.settings.defaultAccentColor });
+      // Show the new brand colour right away. Mode stays light: "default theme" is what a
+      // new shop starts in, not how this panel looks.
+      applyTheme({ themeMode: "light", accentColor: r.data.data.settings.defaultAccentColor });
       toast.success("Platform settings saved");
     } catch (e) {
       toast.error(getErrorMessage(e));
@@ -1068,6 +1069,11 @@ function PlatformSettings({ only = "settings" }) {
               />
               <code>{form.defaultAccentColor}</code>
             </div>
+            {isAccentTooLight(form.defaultAccentColor) && (
+              <p style={{ fontSize: 12, color: "var(--danger)", marginTop: 6 }}>
+                Too light — buttons and links in this colour will be hard to see. Pick a deeper shade.
+              </p>
+            )}
           </Field>
           <Field label="Default currency symbol">
             <input className="input-field" value={form.currencySymbol} onChange={(e) => set("currencySymbol", e.target.value)} maxLength={4} />

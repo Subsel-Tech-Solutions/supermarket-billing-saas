@@ -19,6 +19,7 @@ import {
   Printer,
 } from "lucide-react";
 import { useSettings } from "../../context/SettingsContext";
+import { isAccentTooLight } from "../../utils/theme";
 import { useAuth } from "../../context/AuthContext";
 import { settingsAPI } from "../../services/api";
 import { getErrorMessage } from "../../utils/helpers";
@@ -362,6 +363,11 @@ export default function Settings() {
                 <code style={{ fontSize: 12 }}>{form.accentColor}</code>
               </label>
             </div>
+            {isAccentTooLight(form.accentColor) && (
+              <p style={{ fontSize: 12, color: "var(--danger)", marginTop: 8 }}>
+                Too light — buttons and links in this colour will be hard to see. Pick a deeper shade.
+              </p>
+            )}
             <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
               <button className="btn-accent" style={{ background: "var(--accent)", color: "var(--accent-contrast)" }}>
                 Accent button

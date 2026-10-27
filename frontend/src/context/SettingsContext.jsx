@@ -39,9 +39,13 @@ export const SettingsProvider = ({ children }) => {
   const [loaded, setLoaded] = useState(false);
 
   // Public platform branding (login page etc.)
-  // The platform's brand colour owns every screen that isn't a shop: login, signup and the
+  // The platform's brand COLOUR owns every screen that isn't a shop: login, signup and the
   // admin panel. It used to be applied only when no theme was cached, so once anyone had
-  // opened a shop the cached shop colour stuck and the admin's brand colour showed nowhere.
+  // opened a shop the cached shop colour stuck and the brand colour showed nowhere.
+  //
+  // The light/dark mode is deliberately NOT inherited here. "Default theme" is the mode a
+  // NEW SHOP starts in, as its label says; letting it through turned the admin's own panel
+  // dark the moment they picked dark for new shops. Platform screens stay light.
   useEffect(() => {
     platformAPI
       .getPublic()
@@ -49,7 +53,7 @@ export const SettingsProvider = ({ children }) => {
         setPlatform(r.data.data);
         document.title = r.data.data.platformName || "SuperMart POS";
         if (!isAuthenticated || isSuperAdmin) {
-          applyTheme({ themeMode: r.data.data.defaultThemeMode, accentColor: r.data.data.defaultAccentColor });
+          applyTheme({ themeMode: "light", accentColor: r.data.data.defaultAccentColor });
         }
       })
       .catch(() => {});
