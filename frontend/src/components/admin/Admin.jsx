@@ -28,6 +28,7 @@ import {
 import { adminAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useSettings } from "../../context/SettingsContext";
+import { applyTheme } from "../../utils/theme";
 import { formatCurrency, formatDate, formatDateTime, getErrorMessage, num, ROLE_LABELS, ymd } from "../../utils/helpers";
 import AccountPanel from "../shared/AccountPanel";
 import { Page, SectionHeader, Modal, Field, Grid, Toggle, Spinner, Table, Th, Td, Pill, SearchInput, PageLoader, EmptyState, MiniStat } from "../shared/UI";
@@ -1010,6 +1011,8 @@ function PlatformSettings({ only = "settings" }) {
       const r = await adminAPI.updateSettings(form);
       setForm(r.data.data.settings);
       setPlatform((p) => ({ ...p, ...r.data.data.settings }));
+      // The admin panel is a platform screen, so show the new brand colour right away
+      applyTheme({ themeMode: r.data.data.settings.defaultThemeMode, accentColor: r.data.data.settings.defaultAccentColor });
       toast.success("Platform settings saved");
     } catch (e) {
       toast.error(getErrorMessage(e));

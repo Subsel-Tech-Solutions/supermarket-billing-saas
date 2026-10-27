@@ -255,7 +255,9 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
     debounce(async (text) => {
       if (!text.trim()) return setResults([]);
       try {
-        const r = await productAPI.getAll({ search: text, limit: 8, active: "all" });
+        // Only products still in the catalogue — active: "all" was also returning
+        // deleted ones, so a removed product could be added to a new purchase
+        const r = await productAPI.getAll({ search: text, limit: 8 });
         setResults(r.data.data.products);
       } catch {
         /* ignore */

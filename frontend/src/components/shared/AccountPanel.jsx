@@ -10,6 +10,15 @@ import { useAuth } from "../../context/AuthContext";
 import { formatDate, getErrorMessage, ROLE_LABELS } from "../../utils/helpers";
 import { Grid, Field, Spinner } from "./UI";
 
+// A value the user can read but not change — deliberately not an input box
+const readOnlyValue = {
+  padding: "9px 0",
+  fontSize: 14,
+  fontWeight: 500,
+  color: "var(--text-primary)",
+  wordBreak: "break-word",
+};
+
 export const Section = ({ title, description, children }) => (
   <div className="card" style={{ padding: "20px 22px", marginBottom: 16 }}>
     <h3 style={{ fontSize: 17, color: "var(--text-primary)" }}>{title}</h3>
@@ -29,10 +38,14 @@ export default function AccountPanel({ showSubscription = true }) {
   const [busy, setBusy] = useState("");
 
   const saveProfile = async () => {
-    if (!profile.username.trim()) return toast.error("Name is required");
+    const name = profile.username.trim();
+    const phone = (profile.phone || "").trim();
+    if (!name) return toast.error("Name is required");
+    // Clicking Save without touching anything used to report "Profile updated"
+    if (name === (user?.username || "") && phone === (user?.phone || "")) return toast("No changes to save");
     setBusy("profile");
     try {
-      const r = await authAPI.updateProfile(profile);
+      const r = await authAPI.updateProfile({ username: name, phone });
       setUser(r.data.data.user);
       localStorage.setItem("user", JSON.stringify(r.data.data.user));
       toast.success("Profile updated");
@@ -68,11 +81,14 @@ export default function AccountPanel({ showSubscription = true }) {
           <Field label="Phone">
             <input className="input-field" value={profile.phone || ""} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
           </Field>
-          <Field label="Email (login)">
-            <input className="input-field" value={user?.email || ""} disabled />
+          {/* Email is the login identity and role is granted by the owner, so neither can be
+              edited here. They used to render as empty-looking disabled inputs, which read as
+              broken fields — shown as plain read-only values with the reason instead. */}
+          <Field label="Email (login)" hint="Cannot be changed — this is your login">
+            <p style={readOnlyValue}>{user?.email || "—"}</p>
           </Field>
-          <Field label="Role">
-            <input className="input-field" value={isSuperAdmin ? "Platform admin" : ROLE_LABELS[user?.role] || user?.role} disabled />
+          <Field label="Role" hint={isSuperAdmin ? "Platform administrator" : "Set by the business owner under Staff"}>
+            <p style={readOnlyValue}>{isSuperAdmin ? "Platform admin" : ROLE_LABELS[user?.role] || user?.role || "—"}</p>
           </Field>
         </Grid>
         <button className="btn-primary" style={{ marginTop: 14 }} onClick={saveProfile} disabled={busy === "profile"}>

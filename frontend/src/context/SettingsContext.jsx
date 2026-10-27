@@ -33,22 +33,27 @@ const FALLBACK = {
 applyCachedTheme();
 
 export const SettingsProvider = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isSuperAdmin } = useAuth();
   const [settings, setSettings] = useState(FALLBACK);
   const [platform, setPlatform] = useState({ platformName: "SuperMart POS", allowSignup: true, trialDays: 14 });
   const [loaded, setLoaded] = useState(false);
 
   // Public platform branding (login page etc.)
+  // The platform's brand colour owns every screen that isn't a shop: login, signup and the
+  // admin panel. It used to be applied only when no theme was cached, so once anyone had
+  // opened a shop the cached shop colour stuck and the admin's brand colour showed nowhere.
   useEffect(() => {
     platformAPI
       .getPublic()
       .then((r) => {
         setPlatform(r.data.data);
         document.title = r.data.data.platformName || "SuperMart POS";
-        if (!localStorage.getItem("theme")) applyTheme({ themeMode: r.data.data.defaultThemeMode, accentColor: r.data.data.defaultAccentColor });
+        if (!isAuthenticated || isSuperAdmin) {
+          applyTheme({ themeMode: r.data.data.defaultThemeMode, accentColor: r.data.data.defaultAccentColor });
+        }
       })
       .catch(() => {});
-  }, []);
+  }, [isAuthenticated, isSuperAdmin]);
 
   const apply = useCallback((s) => {
     const merged = { ...FALLBACK, ...s };
@@ -71,9 +76,12 @@ export const SettingsProvider = ({ children }) => {
   }, [apply]);
 
   useEffect(() => {
-    if (isAuthenticated) reload();
+    // A platform admin runs the SaaS and has no shop of their own, so there are no shop
+    // settings to load and nothing should overwrite the platform theme applied above.
+    // (While impersonating a shop, isSuperAdmin is false and this runs as normal.)
+    if (isAuthenticated && !isSuperAdmin) reload();
     else setLoaded(true);
-  }, [isAuthenticated, reload]);
+  }, [isAuthenticated, isSuperAdmin, reload]);
 
   // Follow OS theme changes when "system" is selected
   useEffect(() => {

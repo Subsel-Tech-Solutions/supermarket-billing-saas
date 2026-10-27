@@ -72,7 +72,9 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(() => {
-    ["token", "user", "shop", "adminToken"].forEach((k) => localStorage.removeItem(k));
+    // "theme" too: it caches the shop's colours, and leaving it behind meant the login
+    // page kept showing the last shop's brand instead of the platform's.
+    ["token", "user", "shop", "adminToken", "theme"].forEach((k) => localStorage.removeItem(k));
     setToken(null);
     setUser(null);
     setShop(null);

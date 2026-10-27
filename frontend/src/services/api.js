@@ -108,9 +108,31 @@ export const billAPI = {
   getInvoiceUrl: (id) => `${BASE_URL}/bills/${id}/invoice`,
 };
 
+// Shown in the new tab while the server builds the PDF. Without it the tab is blank
+// white for as long as the request takes — on a cold server that reads as a hang.
+const INVOICE_LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preparing invoice…</title>
+<style>
+  :root{color-scheme:light dark}
+  body{margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+       font-family:Outfit,-apple-system,Segoe UI,sans-serif;background:#fffdf8;color:#1b1813}
+  @media (prefers-color-scheme:dark){body{background:#1e1b16;color:#f4f0e7}}
+  .ring{width:34px;height:34px;border:3px solid rgba(128,128,128,.25);border-top-color:#bf9c5a;border-radius:50%;
+        animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  p{margin:0;font-size:14px} small{opacity:.6;font-size:12px;max-width:300px;text-align:center;line-height:1.5}
+</style></head><body>
+  <div class="ring"></div>
+  <p>Preparing your invoice…</p>
+  <small>The first one after a quiet spell can take a little longer while the server wakes up.</small>
+</body></html>`;
+
 // Open the PDF invoice in a new tab (works with custom REACT_APP_API_URL)
 export const openInvoice = async (billId, format) => {
   const win = window.open("", "_blank");
+  if (win) {
+    win.document.write(INVOICE_LOADING_HTML);
+    win.document.close();
+  }
   try {
     const res = await api.get(`/bills/${billId}/invoice`, { params: format ? { format } : {}, responseType: "blob" });
     const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));

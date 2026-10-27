@@ -37,6 +37,7 @@ import {
   Download,
   History,
   Sliders,
+  Minus,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -1544,6 +1545,12 @@ export default function Stock() {
   const [printMode, setPrintMode] = useState(false);
   const [printSelections, setPrintSelections] = useState({}); // { productId: copies }
 
+  const bumpCopies = (id, delta) =>
+    setPrintSelections((prev) => {
+      const next = Math.max(0, (parseInt(prev[id], 10) || 0) + delta);
+      return { ...prev, [id]: next ? String(next) : "" };
+    });
+
   const fetchPage = useCallback(async (q, p, st) => {
     setLoading(true);
     try {
@@ -1600,6 +1607,19 @@ export default function Stock() {
     }
   };
 
+  const stepBtn = {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    border: "1px solid var(--border)",
+    background: "var(--bg-secondary)",
+    color: "var(--text-secondary)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  };
   const btnStyle = {
     width: 30,
     height: 30,
@@ -1989,7 +2009,7 @@ export default function Stock() {
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
                     {printMode && (
-                      <th style={{ padding: "11px 18px", width: 100 }}>
+                      <th style={{ padding: "11px 12px", width: 132 }}>
                         <span
                           style={{
                             fontSize: 11.5,
@@ -2061,35 +2081,59 @@ export default function Stock() {
                           <td
                             data-label="Copies"
                             style={{
-                              padding: "13px 18px",
+                              padding: "13px 12px",
                               textAlign: "center",
-                              width: 100,
+                              width: 132,
                             }}
                           >
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              placeholder="copies"
-                              value={printSelections[p.id] || ""}
-                              onKeyDown={blockNonNumericKeys(false)}
-                              onChange={(e) => {
-                                const val = numericOnly(e.target.value, false);
-                                setPrintSelections((prev) => ({
-                                  ...prev,
-                                  [p.id]: val,
-                                }));
-                              }}
-                              style={{
-                                width: 64,
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border: "1px solid var(--border)",
-                                fontSize: 12,
-                                textAlign: "center",
-                                background: "var(--bg-primary)",
-                                color: "var(--text-primary)",
-                              }}
-                            />
+                            {/* A bare box with a "copies" placeholder read as a button that
+                                did nothing. Minus / plus make it obviously clickable, and
+                                the box in the middle still accepts a typed number. */}
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <button
+                                type="button"
+                                onClick={() => bumpCopies(p.id, -1)}
+                                disabled={!num(printSelections[p.id])}
+                                aria-label={`One less label for ${p.name}`}
+                                style={{ ...stepBtn, opacity: num(printSelections[p.id]) ? 1 : 0.4 }}
+                              >
+                                <Minus size={12} />
+                              </button>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="0"
+                                aria-label={`Label copies for ${p.name}`}
+                                value={printSelections[p.id] || ""}
+                                onKeyDown={blockNonNumericKeys(false)}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) =>
+                                  setPrintSelections((prev) => ({
+                                    ...prev,
+                                    [p.id]: numericOnly(e.target.value, false),
+                                  }))
+                                }
+                                style={{
+                                  width: 46,
+                                  padding: "5px 4px",
+                                  borderRadius: 6,
+                                  border: "1px solid var(--border)",
+                                  fontSize: 12.5,
+                                  fontWeight: 600,
+                                  textAlign: "center",
+                                  background: "var(--bg-card)",
+                                  color: "var(--text-primary)",
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => bumpCopies(p.id, 1)}
+                                aria-label={`One more label for ${p.name}`}
+                                style={stepBtn}
+                              >
+                                <Plus size={12} />
+                              </button>
+                            </div>
                           </td>
                         )}
                         <td data-primary="" style={{ padding: "13px 18px" }}>
