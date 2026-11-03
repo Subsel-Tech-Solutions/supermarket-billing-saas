@@ -1,4 +1,4 @@
-// tests/authSecurity.test.js — Automated test suite for HTTP-only cookies, tokenVersion, rotation, reuse detection, and CSRF
+// tests/authSecurity.test.js — Automated test suite for HTTP-only cookies, tokenVersion, rotation, reuse detection, CSRF, and production password enforcement
 const assert = require("assert");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
@@ -370,6 +370,64 @@ const createMockRes = () => {
       RefreshToken.update = origUpdate;
       User.increment = origUserIncrement;
     }
+  });
+
+  // ── assertAdminPasswordSecurity Tests ────────────────────────────────────────
+  // These are pure-unit tests that never touch the DB — they just validate the
+  // function's behaviour under different env combinations.
+  const { assertAdminPasswordSecurity } = require("../server");
+
+  // 12. Production — no ADMIN_PASSWORD set
+  await check("assertAdminPasswordSecurity throws in production without ADMIN_PASSWORD", () => {
+    assert.throws(
+      () => assertAdminPasswordSecurity({ NODE_ENV: "production" }),
+      /ADMIN_PASSWORD is required in production/i
+    );
+  });
+
+  // 13. Production — ADMIN_PASSWORD is the well-known default
+  await check("assertAdminPasswordSecurity throws in production with default password 'admin123'", () => {
+    assert.throws(
+      () => assertAdminPasswordSecurity({ NODE_ENV: "production", ADMIN_PASSWORD: "admin123" }),
+      /common default password/i
+    );
+  });
+
+  // 14. Production — ADMIN_PASSWORD is another common weak value
+  await check("assertAdminPasswordSecurity throws in production with common password 'password'", () => {
+    assert.throws(
+      () => assertAdminPasswordSecurity({ NODE_ENV: "production", ADMIN_PASSWORD: "password" }),
+      /common default password/i
+    );
+  });
+
+  // 15. Production — ADMIN_PASSWORD is too short
+  await check("assertAdminPasswordSecurity throws in production when ADMIN_PASSWORD length < 8", () => {
+    assert.throws(
+      () => assertAdminPasswordSecurity({ NODE_ENV: "production", ADMIN_PASSWORD: "short" }),
+      /at least 8 characters/i
+    );
+  });
+
+  // 16. Production — strong password → should not throw
+  await check("assertAdminPasswordSecurity passes in production with a strong ADMIN_PASSWORD", () => {
+    assert.doesNotThrow(() =>
+      assertAdminPasswordSecurity({ NODE_ENV: "production", ADMIN_PASSWORD: "Str0ng&UniqueP@ss!" })
+    );
+  });
+
+  // 17. Development — no ADMIN_PASSWORD set → should not throw (dev mode is permissive)
+  await check("assertAdminPasswordSecurity passes in development without ADMIN_PASSWORD", () => {
+    assert.doesNotThrow(() =>
+      assertAdminPasswordSecurity({ NODE_ENV: "development" })
+    );
+  });
+
+  // 18. Development — weak password is allowed (just warns at runtime)
+  await check("assertAdminPasswordSecurity passes in development with weak ADMIN_PASSWORD", () => {
+    assert.doesNotThrow(() =>
+      assertAdminPasswordSecurity({ NODE_ENV: "development", ADMIN_PASSWORD: "admin123" })
+    );
   });
 
   console.log(`\nAll ${passed} Auth Security tests passed successfully! ✔`);
