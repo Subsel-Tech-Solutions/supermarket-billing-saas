@@ -438,6 +438,8 @@ const updatePlatform = asyncHandler(async (req, res) => {
     if (b[k] !== undefined) next[k] = String(b[k] ?? "").slice(0, 200);
   });
   if (b.allowSignup !== undefined) next.allowSignup = bool(b.allowSignup);
+  if (b.signupInviteCode !== undefined) next.signupInviteCode = String(b.signupInviteCode).trim().slice(0, 100);
+  if (b.maxTenants !== undefined) next.maxTenants = Math.max(1, int(b.maxTenants, 100));
   if (b.trialDays !== undefined) next.trialDays = Math.max(1, Math.min(365, int(b.trialDays, 14)));
   if (b.defaultThemeMode !== undefined) next.defaultThemeMode = ["light", "dark", "system"].includes(b.defaultThemeMode) ? b.defaultThemeMode : "light";
   if (b.defaultAccentColor !== undefined && /^#[0-9a-fA-F]{6}$/.test(b.defaultAccentColor)) next.defaultAccentColor = b.defaultAccentColor;

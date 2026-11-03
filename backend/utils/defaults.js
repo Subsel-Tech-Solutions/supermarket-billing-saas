@@ -5,8 +5,12 @@ const PLATFORM_DEFAULTS = {
   tagline: "A premium operating system for modern retail.",
   supportEmail: "",
   supportPhone: "",
-  allowSignup: true,
+  allowSignup: process.env.ALLOW_PUBLIC_SIGNUP !== undefined
+    ? process.env.ALLOW_PUBLIC_SIGNUP === "true"
+    : process.env.NODE_ENV !== "production",
   trialDays: 14,
+  signupInviteCode: process.env.SIGNUP_INVITE_CODE || "",
+  maxTenants: parseInt(process.env.MAX_TENANTS || "100", 10),
   defaultThemeMode: "light",
   defaultAccentColor: "#bf9c5a",
   currencySymbol: "₹",

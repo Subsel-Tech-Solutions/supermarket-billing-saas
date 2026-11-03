@@ -31,10 +31,25 @@ const sessionPayload = async (user, shop) => {
 
 // POST /api/auth/register — public SaaS signup (creates business + owner + private DB + cookies)
 const register = asyncHandler(async (req, res) => {
-  const platform = await getPlatformSettings();
-  if (!platform.allowSignup) throw new HttpError(403, "New signups are currently closed. Contact the administrator.");
+  const body = req.body || {};
 
-  const { shopName, username, email, password, phone, address, businessType } = req.body || {};
+  // 1. Bot Honeypot
+  if (body.hp_company_field || body.websiteUrl) {
+    throw new HttpError(400, "Spam registration rejected");
+  }
+
+  // 2. Check signup status & invite code
+  const platform = await getPlatformSettings();
+  const inviteCode = String(body.inviteCode || "").trim();
+  const configuredInvite = String(platform.signupInviteCode || process.env.SIGNUP_INVITE_CODE || "").trim();
+
+  if (!platform.allowSignup) {
+    if (!configuredInvite || inviteCode !== configuredInvite) {
+      throw new HttpError(403, "New signups are currently closed or require a valid invite code. Contact the administrator.", "SIGNUP_CLOSED");
+    }
+  }
+
+  const { shopName, username, email, password, phone, address, businessType } = body;
   const { shop, user } = await createShopWithOwner({ shopName, username, email, password, phone, address, businessType });
 
   await setAuthCookies(res, user);
