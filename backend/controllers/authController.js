@@ -1,6 +1,8 @@
 // controllers/authController.js — HTTP-only cookie-based authentication with refresh rotation & revocation
 const jwt = require("jsonwebtoken");
-const { User, Shop, RefreshToken } = require("../models/master");
+const crypto = require("crypto");
+const { Op } = require("sequelize");
+const { sequelize, User, Shop, RefreshToken, PasswordResetToken } = require("../models/master");
 const {
   setAuthCookies,
   clearAuthCookies,
@@ -14,6 +16,7 @@ const { asyncHandler, HttpError, str } = require("../utils/helpers");
 const { getPlatformSettings } = require("../utils/settings");
 const { shopPayload } = require("../utils/shopPayload");
 const { createShopWithOwner } = require("../utils/shopService");
+const { sendPasswordResetEmail } = require("../utils/passwordResetEmail");
 
 const JWT_REFRESH_SECRET = () => process.env.JWT_REFRESH_SECRET || `${process.env.JWT_SECRET}_refresh`;
 
@@ -213,4 +216,70 @@ const changePassword = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Password updated successfully" });
 });
 
-module.exports = { register, login, refresh, logout, getMe, getCsrf, updateProfile, changePassword };
+// POST /api/auth/forgot-password — sends a short-lived, single-use reset link
+const forgotPassword = asyncHandler(async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Enter a valid email address");
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM || !process.env.FRONTEND_URL) {
+    throw new HttpError(503, "Password reset email is not configured. Contact your administrator.");
+  }
+
+  const user = await User.findOne({ where: { email, isActive: true } });
+  if (user) {
+    const rawToken = crypto.randomBytes(32).toString("base64url");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    await PasswordResetToken.destroy({ where: { userId: user.id } });
+    await PasswordResetToken.create({ userId: user.id, tokenHash, expiresAt: new Date(Date.now() + 30 * 60 * 1000) });
+
+    const appUrl = process.env.FRONTEND_URL.replace(/\/+$/, "");
+    try {
+      await sendPasswordResetEmail({
+        to: user.email,
+        name: user.username,
+        resetUrl: `${appUrl}/reset-password?token=${encodeURIComponent(rawToken)}`,
+      });
+    } catch (err) {
+      await PasswordResetToken.destroy({ where: { tokenHash } });
+      console.error("Password reset email could not be sent:", err.message);
+      throw new HttpError(503, "Unable to send a password reset email right now. Please try again later.");
+    }
+  }
+
+  res.json({ success: true, message: "If an account exists for that email, a reset link is on its way." });
+});
+
+// POST /api/auth/reset-password — consumes the reset link and revokes all old sessions
+const resetPassword = asyncHandler(async (req, res) => {
+  const rawToken = String(req.body?.token || "");
+  const password = String(req.body?.password || "");
+  if (!/^[A-Za-z0-9_-]{40,50}$/.test(rawToken)) throw new HttpError(400, "This password reset link is invalid or has expired");
+  if (password.length < 8 || password.length > 128) throw new HttpError(400, "Password must be between 8 and 128 characters");
+
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const transaction = await sequelize.transaction();
+  try {
+    const reset = await PasswordResetToken.findOne({
+      where: { tokenHash, usedAt: null, expiresAt: { [Op.gt]: new Date() } },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    if (!reset) throw new HttpError(400, "This password reset link is invalid or has expired");
+
+    const user = await User.findByPk(reset.userId, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!user || !user.isActive) throw new HttpError(400, "This password reset link is invalid or has expired");
+
+    user.password = password;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    await user.save({ transaction });
+    await RefreshToken.update({ isRevoked: true }, { where: { userId: user.id }, transaction });
+    await PasswordResetToken.update({ usedAt: new Date() }, { where: { userId: user.id, usedAt: null }, transaction });
+    await transaction.commit();
+  } catch (err) {
+    await transaction.rollback();
+    throw err;
+  }
+
+  res.json({ success: true, message: "Password reset. You can now sign in with your new password." });
+});
+
+module.exports = { register, login, refresh, logout, getMe, getCsrf, updateProfile, changePassword, forgotPassword, resetPassword };

@@ -43,6 +43,9 @@ services:
       TRUST_PROXY: "true"
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@supermarket.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - "5000:5000"
 

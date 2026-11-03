@@ -3,6 +3,7 @@ const { asyncHandler, HttpError, bool, num } = require("../utils/helpers");
 const { SHOP_SETTING_DEFAULTS, SHOP_SETTING_KEYS, mergeSettings } = require("../utils/defaults");
 const { getSettingRow } = require("../utils/settings");
 const { Shop } = require("../models/master");
+const { normalizeGstin, isValidGstin } = require("../utils/gst");
 
 const ENUMS = {
   themeMode: ["light", "dark", "system"],
@@ -62,6 +63,10 @@ const updateSettings = asyncHandler(async (req, res) => {
   SHOP_SETTING_KEYS.forEach((key) => {
     if (body[key] !== undefined) next[key] = sanitize(key, body[key]);
   });
+  if (body.gstNumber !== undefined) {
+    next.gstNumber = normalizeGstin(next.gstNumber);
+    if (next.gstNumber && !isValidGstin(next.gstNumber)) throw new HttpError(400, "Enter a valid 15-character shop GSTIN");
+  }
   if (!String(next.businessName || "").trim()) throw new HttpError(400, "Business name is required");
   if (!next.paymentMethods.includes(next.defaultPaymentMethod)) next.defaultPaymentMethod = next.paymentMethods[0];
 
