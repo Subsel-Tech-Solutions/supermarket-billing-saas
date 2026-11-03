@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import BarcodeScanner from "../shared/BarcodeScanner";
 import { productAPI, billAPI, customerAPI, openInvoice, newClientRef } from "../../services/api";
-import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol } from "../../utils/helpers";
+import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol, cleanPhone, isValidPhone } from "../../utils/helpers";
 import { calculateBill } from "../../utils/billMath";
 import { printReceipt } from "../../utils/receipt";
 import { Spinner, Modal, FormField } from "../shared/UI";
@@ -336,7 +336,7 @@ export default function Billing() {
 
   // ── Customer lookup ────────────────────────────────────────────────────────
   const lookupCustomer = async (phone) => {
-    const p = String(phone || "").trim();
+    const p = cleanPhone(phone);
     if (p.length < 6) return;
     setLookingUp(true);
     try {
@@ -441,7 +441,11 @@ export default function Billing() {
       setCartOpen(false);
       return toast.error(`Short by ${formatCurrency(due)} — collect the full amount, or tick "Put the balance on credit".`);
     }
-    if (due > 0 && !custPhone.trim() && !customer) {
+    const cleanedPhone = cleanPhone(custPhone);
+    if (cleanedPhone && !isValidPhone(cleanedPhone)) {
+      return toast.error("Enter a valid 10-digit mobile number for the customer");
+    }
+    if (due > 0 && !cleanedPhone && !customer) {
       return toast.error("Enter the customer's phone number for a credit / due sale");
     }
 
@@ -454,7 +458,7 @@ export default function Billing() {
         items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity, discount: num(i.discount) })),
         customerId: customer?.id,
         customerName: custName || undefined,
-        customerPhone: custPhone.trim() || undefined,
+        customerPhone: cleanedPhone || undefined,
         customerGstNumber: checkout.customerGst?.trim() || undefined,
         discountAmount: checkout.discountType === "amount" ? num(checkout.discountValue) : 0,
         discountPercent: checkout.discountType === "percent" ? num(checkout.discountValue) : 0,
@@ -670,7 +674,7 @@ export default function Billing() {
                 placeholder="Phone number"
                 value={custPhone}
                 onChange={(e) => {
-                  setCustPhone(e.target.value);
+                  setCustPhone(cleanPhone(e.target.value));
                   setCustomer(null);
                 }}
                 onBlur={() => lookupCustomer(custPhone)}

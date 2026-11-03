@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { customerAPI } from "../../services/api";
-import { getErrorMessage } from "../../utils/helpers";
+import { getErrorMessage, cleanPhone, isValidPhone } from "../../utils/helpers";
 import { Modal, Field, Grid, Spinner } from "../shared/UI";
 
 const EMPTY = { name: "", phone: "", email: "", address: "", gstNumber: "", creditLimit: "", notes: "" };
@@ -16,10 +16,13 @@ export default function CustomerForm({ isOpen, onClose, customer, onSaved }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const save = async () => {
-    if (!form.phone.trim()) return toast.error("Phone number is required");
+    const cleaned = cleanPhone(form.phone);
+    if (!cleaned) return toast.error("Phone number is required");
+    if (!isValidPhone(cleaned)) return toast.error("Enter a valid 10-digit mobile number");
     setSaving(true);
     try {
-      const r = customer ? await customerAPI.update(customer.id, form) : await customerAPI.create(form);
+      const payload = { ...form, phone: cleaned };
+      const r = customer ? await customerAPI.update(customer.id, payload) : await customerAPI.create(payload);
       toast.success(r.data.message);
       onSaved?.(r.data.data.customer);
       onClose();
@@ -37,7 +40,7 @@ export default function CustomerForm({ isOpen, onClose, customer, onSaved }) {
           <input className="input-field" value={form.name} onChange={(e) => set("name", e.target.value)} autoFocus />
         </Field>
         <Field label="Phone" required>
-          <input className="input-field" type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+          <input className="input-field" type="tel" value={form.phone} onChange={(e) => set("phone", cleanPhone(e.target.value))} placeholder="e.g. 9876543210" />
         </Field>
         <Field label="Email">
           <input className="input-field" type="email" value={form.email || ""} onChange={(e) => set("email", e.target.value)} />
