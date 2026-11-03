@@ -448,6 +448,17 @@ export default function Billing() {
     if (due > 0 && !cleanedPhone && !customer) {
       return toast.error("Enter the customer's phone number for a credit / due sale");
     }
+    if (due > 0 && customer && customer.creditLimit !== null && customer.creditLimit !== undefined) {
+      const custLimit = num(customer.creditLimit);
+      const newDue = num(customer.balance) + due;
+      if (custLimit <= 0 && newDue > 0) {
+        return toast.error(`Credit sale not allowed for ${customer.name} (Credit limit is ₹0.00). Only owners & managers can grant credit limits.`);
+      }
+      if (newDue > custLimit) {
+        const room = Math.max(0, custLimit - num(customer.balance));
+        return toast.error(`Credit limit exceeded for ${customer.name}. Limit is ${formatCurrency(custLimit)}, already due ${formatCurrency(customer.balance)} — only ${formatCurrency(room)} more can go on credit.`);
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -696,6 +707,13 @@ export default function Billing() {
               )}
               {num(customer.balance) > 0 && <span style={{ color: "var(--danger)" }}>Due {formatCurrency(customer.balance)}</span>}
               {num(customer.balance) < 0 && <span style={{ color: "var(--success)" }}>Advance {formatCurrency(-num(customer.balance))}</span>}
+              {customer.creditLimit === null ? (
+                <span style={{ color: "var(--accent)" }}>Credit: Unlimited</span>
+              ) : num(customer.creditLimit) > 0 ? (
+                <span>Credit limit: {formatCurrency(customer.creditLimit)}</span>
+              ) : (
+                <span style={{ color: "var(--text-muted)" }}>Credit: ₹0.00</span>
+              )}
             </div>
           ) : (
             custPhone.trim().length >= 6 &&

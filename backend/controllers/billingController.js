@@ -147,15 +147,32 @@ const createBill = asyncHandler(async (req, res) => {
       // Even with the setting off, a due needs *someone* to chase. A nameless, phoneless
       // udhaar entry is money written off at the moment the bill is saved.
       if (!customer && !phone) throw new HttpError(400, "A credit (due) sale needs at least a customer phone number");
-      if (customer && Number(customer.creditLimit) > 0 && Number(customer.balance) + pay.due > Number(customer.creditLimit)) {
-        const room = round2(Math.max(0, Number(customer.creditLimit) - Number(customer.balance)));
-        throw new HttpError(
-          400,
-          `Credit limit exceeded for ${customer.name}. Limit ${Number(customer.creditLimit).toFixed(2)}, already due ${Number(
-            customer.balance,
-          ).toFixed(2)} — only ${room.toFixed(2)} more can go on account.`,
-          "CREDIT_LIMIT",
-        );
+      if (customer) {
+        const hasExplicitLimit = customer.creditLimit !== null && customer.creditLimit !== undefined;
+        if (hasExplicitLimit) {
+          const limit = round2(num(customer.creditLimit));
+          const currentDue = round2(num(customer.balance));
+          const newTotalDue = round2(currentDue + pay.due);
+
+          if (limit <= 0) {
+            if (newTotalDue > 0) {
+              throw new HttpError(
+                400,
+                `Credit sales are not allowed for ${customer.name} (Credit limit is ₹0.00). Only store owners and managers can grant credit limits.`,
+                "CREDIT_NOT_ALLOWED",
+              );
+            }
+          } else if (newTotalDue > limit) {
+            const room = round2(Math.max(0, limit - currentDue));
+            throw new HttpError(
+              400,
+              `Credit limit exceeded for ${customer.name}. Limit ${limit.toFixed(2)}, already due ${currentDue.toFixed(
+                2,
+              )} — only ${room.toFixed(2)} more can go on account.`,
+              "CREDIT_LIMIT",
+            );
+          }
+        }
       }
     }
 
