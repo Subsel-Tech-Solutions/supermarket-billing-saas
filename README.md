@@ -69,7 +69,9 @@ npm install
 npm start                   # http://localhost:3000  (proxies /api to :5000)
 ```
 
-Login: `admin@supermarket.com` / `admin123` (change it in Settings → My Account).
+Login: `admin@supermarket.com` / password set via `ADMIN_PASSWORD` in `.env`
+(defaults to `admin123` for **local development only** — the server **refuses to start**
+in production unless you set a strong, unique `ADMIN_PASSWORD` of at least 8 characters).
 New businesses can sign up at `/signup` (turn off in Admin → Settings).
 
 ## Moving data from the old version

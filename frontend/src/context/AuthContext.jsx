@@ -1,6 +1,6 @@
-// src/context/AuthContext.jsx
+// src/context/AuthContext.jsx — Secure authentication state using HTTP-only cookies
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { authAPI } from "../services/api";
+import { authAPI, adminAPI } from "../services/api";
 
 const AuthContext = createContext(null);
 
@@ -15,69 +15,74 @@ const read = (key) => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => read("user"));
   const [shop, setShop] = useState(() => read("shop"));
-  const [token, setToken] = useState(() => localStorage.getItem("token"));
-  const [loading, setLoading] = useState(!!localStorage.getItem("token"));
+  const [loading, setLoading] = useState(true);
   const [subscriptionExpired, setSubscriptionExpired] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(() => !!read("isImpersonating"));
 
-  const persist = useCallback((t, u, s) => {
-    localStorage.setItem("token", t);
-    localStorage.setItem("user", JSON.stringify(u));
-    if (s) localStorage.setItem("shop", JSON.stringify(s));
-    setToken(t);
+  const persistSession = useCallback((u, s, impersonating = false) => {
     setUser(u);
     if (s) setShop(s);
+    setIsImpersonating(impersonating);
+    if (u) localStorage.setItem("user", JSON.stringify(u));
+    else localStorage.removeItem("user");
+    if (s) localStorage.setItem("shop", JSON.stringify(s));
+    else localStorage.removeItem("shop");
+    if (impersonating) localStorage.setItem("isImpersonating", "true");
+    else localStorage.removeItem("isImpersonating");
     setSubscriptionExpired(s ? !s.subscriptionActive : false);
   }, []);
 
   const login = useCallback(
     async (email, password) => {
       const res = await authAPI.login({ email, password });
-      const { token: t, user: u, shop: s } = res.data.data;
-      persist(t, u, s);
+      const { user: u, shop: s } = res.data.data;
+      persistSession(u, s, false);
       return u;
     },
-    [persist],
+    [persistSession],
   );
 
   const register = useCallback(
     async (payload) => {
       const res = await authAPI.register(payload);
-      const { token: t, user: u, shop: s } = res.data.data;
-      persist(t, u, s);
+      const { user: u, shop: s } = res.data.data;
+      persistSession(u, s, false);
       return u;
     },
-    [persist],
+    [persistSession],
   );
 
-  // Used by platform admin "Open shop" (support access). Keeps admin token to come back.
+  // Used by platform admin "Open shop" (support access)
   const loginWithSession = useCallback(
-    ({ token: t, user: u, shop: s }) => {
-      const current = localStorage.getItem("token");
-      if (current && !localStorage.getItem("adminToken")) localStorage.setItem("adminToken", current);
-      persist(t, u, s);
+    ({ user: u, shop: s }) => {
+      persistSession(u, s, true);
       window.location.href = "/dashboard";
     },
-    [persist],
+    [persistSession],
   );
 
-  const returnToAdmin = useCallback(() => {
-    const adminToken = localStorage.getItem("adminToken");
-    localStorage.removeItem("adminToken");
-    if (adminToken) {
-      localStorage.setItem("token", adminToken);
-      localStorage.removeItem("user");
-      localStorage.removeItem("shop");
+  const returnToAdmin = useCallback(async () => {
+    try {
+      const res = await adminAPI.returnToAdmin();
+      const { user: u, shop: s } = res.data.data;
+      persistSession(u, s, false);
       window.location.href = "/admin";
+    } catch {
+      window.location.href = "/login";
     }
-  }, []);
+  }, [persistSession]);
 
-  const logout = useCallback(() => {
-    // "theme" too: it caches the shop's colours, and leaving it behind meant the login
-    // page kept showing the last shop's brand instead of the platform's.
-    ["token", "user", "shop", "adminToken", "theme"].forEach((k) => localStorage.removeItem(k));
-    setToken(null);
+  const logout = useCallback(async () => {
+    try {
+      await authAPI.logout();
+    } catch {
+      /* ignore */
+    }
+    ["user", "shop", "isImpersonating", "token", "adminToken", "theme"].forEach((k) => localStorage.removeItem(k));
     setUser(null);
     setShop(null);
+    setIsImpersonating(false);
+    window.location.href = "/login";
   }, []);
 
   const refresh = useCallback(async () => {
@@ -91,32 +96,73 @@ export const AuthProvider = ({ children }) => {
     return res.data.data;
   }, []);
 
+  // Initialize session on mount via getMe() or refresh()
   useEffect(() => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    refresh()
-      .catch((err) => {
-        if (err?.response?.status === 401 || err?.response?.status === 403) logout();
+    let mounted = true;
+    authAPI
+      .getMe()
+      .then((res) => {
+        if (!mounted) return;
+        const { user: u, shop: s } = res.data.data;
+        setUser(u);
+        setShop(s);
+        localStorage.setItem("user", JSON.stringify(u));
+        localStorage.setItem("shop", JSON.stringify(s));
+        setSubscriptionExpired(s ? !s.subscriptionActive : false);
       })
-      .finally(() => setLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch((err) => {
+        if (err?.response?.status === 401) {
+          return authAPI
+            .refresh()
+            .then((r) => {
+              if (!mounted) return;
+              const { user: u, shop: s } = r.data.data;
+              setUser(u);
+              setShop(s);
+              localStorage.setItem("user", JSON.stringify(u));
+              localStorage.setItem("shop", JSON.stringify(s));
+              setSubscriptionExpired(s ? !s.subscriptionActive : false);
+            })
+            .catch(() => {
+              if (!mounted) return;
+              setUser(null);
+              setShop(null);
+              setIsImpersonating(false);
+              localStorage.removeItem("user");
+              localStorage.removeItem("shop");
+              localStorage.removeItem("isImpersonating");
+            });
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
+    const onUnauthorized = () => {
+      setUser(null);
+      setShop(null);
+      setIsImpersonating(false);
+    };
     const onExpired = () => setSubscriptionExpired(true);
+    window.addEventListener("auth-unauthorized", onUnauthorized);
     window.addEventListener("subscription-expired", onExpired);
-    return () => window.removeEventListener("subscription-expired", onExpired);
+    return () => {
+      window.removeEventListener("auth-unauthorized", onUnauthorized);
+      window.removeEventListener("subscription-expired", onExpired);
+    };
   }, []);
 
   const role = user?.role || "cashier";
   const isSuperAdmin = !!user?.isSuperAdmin;
   const can = useCallback((...roles) => isSuperAdmin || roles.includes(role), [isSuperAdmin, role]);
 
-  // The platform admin runs the SaaS, not a shop: they create and manage businesses and
-  // never bill at a counter. While impersonating ("open shop" for support) the token is
-  // the owner's, isSuperAdmin is false, and the full shop app comes back as normal.
-  const isPlatformOnly = isSuperAdmin;
+  const isPlatformOnly = isSuperAdmin && !isImpersonating;
 
   return (
     <AuthContext.Provider
@@ -124,7 +170,6 @@ export const AuthProvider = ({ children }) => {
         user,
         setUser,
         shop,
-        token,
         loading,
         login,
         register,
@@ -132,13 +177,13 @@ export const AuthProvider = ({ children }) => {
         refresh,
         loginWithSession,
         returnToAdmin,
-        isImpersonating: !!localStorage.getItem("adminToken"),
+        isImpersonating,
         isSuperAdmin,
         isPlatformOnly,
         role,
         can,
         subscriptionExpired,
-        isAuthenticated: !!token,
+        isAuthenticated: !!user,
       }}
     >
       {children}

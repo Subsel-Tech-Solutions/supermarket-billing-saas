@@ -1,15 +1,43 @@
-// src/services/api.js
+// src/services/api.js — Secure API client with HTTP-only cookies, automatic token refresh queue, and CSRF protection
 import axios from "axios";
 
 export const BASE_URL = (process.env.REACT_APP_API_URL || "/api").replace(/\/$/, "");
 
-const api = axios.create({ baseURL: BASE_URL, timeout: 30000 });
+// Helper to read XSRF-TOKEN cookie
+const getCsrfCookie = () => {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
 
+const api = axios.create({
+  baseURL: BASE_URL,
+  timeout: 30000,
+  withCredentials: true,
+  xsrfCookieName: "XSRF-TOKEN",
+  xsrfHeaderName: "X-XSRF-TOKEN",
+});
+
+// Explicitly ensure XSRF-TOKEN is attached on mutation requests for defense-in-depth
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const xsrf = getCsrfCookie();
+  if (xsrf && !config.headers["X-XSRF-TOKEN"]) {
+    config.headers["X-XSRF-TOKEN"] = xsrf;
+  }
   return config;
 });
+
+// ── Refresh Token Concurrency Queue ──────────────────────────────────────────
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error) => {
+  failedQueue.forEach((prom) => {
+    if (error) prom.reject(error);
+    else prom.resolve();
+  });
+  failedQueue = [];
+};
 
 api.interceptors.response.use(
   (res) => {
@@ -17,26 +45,63 @@ api.interceptors.response.use(
     window.dispatchEvent(new CustomEvent("api-reachable"));
     return res;
   },
-  (err) => {
+  async (err) => {
     const status = err.response?.status;
-    const url = err.config?.url || "";
+    const originalRequest = err.config || {};
+    const url = originalRequest.url || "";
 
-    // No response at all → the network or the server is down, not an auth problem.
-    // useOnline picks this up and starts probing /health.
-    if (!err.response) window.dispatchEvent(new CustomEvent("api-unreachable"));
+    // Network dropped / server unreachable
+    if (!err.response) {
+      window.dispatchEvent(new CustomEvent("api-unreachable"));
+    }
 
-    if (status === 401 && !url.includes("/auth/login")) {
-      // Keep "pos.cart" and "theme" — a token that expired mid-sale must not throw away
-      // the trolley the cashier has already scanned. It is restored after signing back in.
-      ["token", "user", "shop", "adminToken"].forEach((k) => localStorage.removeItem(k));
-      if (!window.location.pathname.startsWith("/login")) {
-        // A full page load (rather than a router navigation) guarantees every component
-        // drops its stale authenticated state.
-        window.location.href = "/login";
+    // ── 401 Unauthorized Handling ──────────────────────────────────────────────
+    if (status === 401) {
+      const isAuthRoute = url.includes("/auth/login") || url.includes("/auth/refresh");
+
+      if (!isAuthRoute && !originalRequest._retry) {
+        if (isRefreshing) {
+          // If another request is already refreshing, buffer this one until done
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          })
+            .then(() => api(originalRequest))
+            .catch((queueErr) => Promise.reject(queueErr));
+        }
+
+        originalRequest._retry = true;
+        isRefreshing = true;
+
+        try {
+          await api.post("/auth/refresh");
+          processQueue(null);
+          return api(originalRequest);
+        } catch (refreshErr) {
+          processQueue(refreshErr);
+          // Purge session cache while preserving counter cart & local theme
+          ["user", "shop", "isImpersonating", "token", "adminToken"].forEach((k) => localStorage.removeItem(k));
+          window.dispatchEvent(new CustomEvent("auth-unauthorized"));
+          if (!window.location.pathname.startsWith("/login")) {
+            window.location.href = "/login";
+          }
+          return Promise.reject(refreshErr);
+        } finally {
+          isRefreshing = false;
+        }
+      } else if (isAuthRoute) {
+        if (url.includes("/auth/refresh")) {
+          ["user", "shop", "isImpersonating", "token", "adminToken"].forEach((k) => localStorage.removeItem(k));
+          window.dispatchEvent(new CustomEvent("auth-unauthorized"));
+          if (!window.location.pathname.startsWith("/login")) {
+            window.location.href = "/login";
+          }
+        }
       }
     }
+
     if (status === 402) window.dispatchEvent(new CustomEvent("subscription-expired"));
     if (status === 429) window.dispatchEvent(new CustomEvent("rate-limited", { detail: err.response?.data }));
+
     return Promise.reject(err);
   },
 );
@@ -60,6 +125,9 @@ export const platformAPI = {
 export const authAPI = {
   register: (data) => api.post("/auth/register", data),
   login: (data) => api.post("/auth/login", data),
+  refresh: () => api.post("/auth/refresh"),
+  logout: () => api.post("/auth/logout"),
+  getCsrf: () => api.get("/auth/csrf"),
   getMe: () => api.get("/auth/me"),
   updateProfile: (data) => api.put("/auth/profile", data),
   changePassword: (data) => api.put("/auth/change-password", data),
@@ -87,7 +155,6 @@ export const productAPI = {
   getMovements: (id, params) => api.get(`/products/${id}/movements`, { params }),
   scan: (data) => api.post("/products/scan", data),
   bulkImport: (products) => api.post("/products/bulk-import", { products }),
-  // legacy aliases kept for older components
   getSales: (params) => api.get("/reports/sales", { params }),
   getTopProducts: (params) => api.get("/reports/top-products", { params }),
   getDashboard: () => api.get("/reports/dashboard"),
@@ -108,8 +175,6 @@ export const billAPI = {
   getInvoiceUrl: (id) => `${BASE_URL}/bills/${id}/invoice`,
 };
 
-// Shown in the new tab while the server builds the PDF. Without it the tab is blank
-// white for as long as the request takes — on a cold server that reads as a hang.
 const INVOICE_LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preparing invoice…</title>
 <style>
   :root{color-scheme:light dark}
@@ -126,7 +191,6 @@ const INVOICE_LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><
   <small>The first one after a quiet spell can take a little longer while the server wakes up.</small>
 </body></html>`;
 
-// Open the PDF invoice in a new tab (works with custom REACT_APP_API_URL)
 export const openInvoice = async (billId, format) => {
   const win = window.open("", "_blank");
   if (win) {
@@ -208,8 +272,6 @@ export const reportAPI = {
 
 // ── Platform admin ───────────────────────────────────────────────────────────
 export const adminAPI = {
-  // light=1 skips the per-business rollups, which would otherwise open one database
-  // connection per shop just to render the dashboard
   getStats: (params) => api.get("/admin/stats", { params }),
   getUsers: (params) => api.get("/admin/users", { params }),
   getShops: (params) => api.get("/admin/shops", { params }),
@@ -220,6 +282,7 @@ export const adminAPI = {
   toggleShop: (id) => api.patch(`/admin/shops/${id}/toggle`),
   resetPassword: (id, data) => api.post(`/admin/shops/${id}/reset-password`, data),
   loginAs: (id) => api.post(`/admin/shops/${id}/login-as`),
+  returnToAdmin: () => api.post("/admin/return-to-admin"),
   repairDb: (id) => api.post(`/admin/shops/${id}/repair-db`),
   getSettings: () => api.get("/admin/settings"),
   updateSettings: (data) => api.put("/admin/settings", data),
