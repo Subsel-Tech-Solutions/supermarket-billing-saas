@@ -20,7 +20,7 @@ module.exports = (sequelize) => {
       address: { type: DataTypes.TEXT, allowNull: true },
       gstNumber: { type: DataTypes.STRING(20), allowNull: true, field: "gst_number" },
       loyaltyPoints: money({ field: "loyalty_points" }),
-      creditLimit: money({ field: "credit_limit" }),
+      creditLimit: money({ field: "credit_limit", allowNull: true, defaultValue: 0 }),
       balance: money(), // amount the customer OWES the shop (credit / udhaar)
       totalSpent: money({ field: "total_spent" }),
       totalBills: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "total_bills" },
