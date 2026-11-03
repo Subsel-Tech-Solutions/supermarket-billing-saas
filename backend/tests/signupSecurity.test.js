@@ -1,6 +1,7 @@
 // tests/signupSecurity.test.js — test public signup security, invite codes, honeypot & tenant quota
 const assert = require("assert");
 const { HttpError } = require("../utils/helpers");
+const { publicSignupEnabledByDefault, migratePlatformSignupPolicy, SIGNUP_POLICY_VERSION } = require("../utils/defaults");
 
 console.log("Starting Public Signup Security & Abuse Prevention Test Suite...\n");
 
@@ -18,15 +19,24 @@ const test = (desc, fn) => {
 };
 
 // ── 1. Default Configuration Logic Tests ────────────────────────────────────
-test("allowSignup defaults to false when NODE_ENV is production", () => {
-  const computeDefaultSignup = (envAllow, nodeEnv) => {
-    return envAllow !== undefined ? envAllow === "true" : nodeEnv !== "production";
-  };
+test("public signup defaults to closed unless explicitly enabled by environment", () => {
+  assert.strictEqual(publicSignupEnabledByDefault({}), false);
+  assert.strictEqual(publicSignupEnabledByDefault({ NODE_ENV: "development" }), false);
+  assert.strictEqual(publicSignupEnabledByDefault({ ALLOW_PUBLIC_SIGNUP: "false" }), false);
+  assert.strictEqual(publicSignupEnabledByDefault({ ALLOW_PUBLIC_SIGNUP: "true" }), true);
+});
 
-  assert.strictEqual(computeDefaultSignup(undefined, "production"), false);
-  assert.strictEqual(computeDefaultSignup(undefined, "development"), true);
-  assert.strictEqual(computeDefaultSignup("true", "production"), true);
-  assert.strictEqual(computeDefaultSignup("false", "development"), false);
+test("migrates legacy default-on platform settings to closed exactly once", () => {
+  const legacy = migratePlatformSignupPolicy({ allowSignup: true, platformName: "Existing Platform" }, false);
+  assert.strictEqual(legacy.allowSignup, false);
+  assert.strictEqual(legacy.platformName, "Existing Platform");
+  assert.strictEqual(legacy._signupPolicyVersion, SIGNUP_POLICY_VERSION);
+  assert.strictEqual(migratePlatformSignupPolicy(legacy, false), null);
+});
+
+test("allows explicit environment opt-in when migrating legacy settings", () => {
+  const migrated = migratePlatformSignupPolicy({ allowSignup: true }, true);
+  assert.strictEqual(migrated.allowSignup, true);
 });
 
 // ── 2. Honeypot & Bot Detection Tests ───────────────────────────────────────

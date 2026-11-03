@@ -11,7 +11,7 @@ const { provisionTenant, dbNameForShop, closeAll, stats } = require("./tenant/te
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const { securityHeaders, apiLimiter } = require("./middleware/security");
 const { verifyCsrf } = require("./middleware/csrf");
-const { PLATFORM_DEFAULTS } = require("./utils/defaults");
+const { PLATFORM_DEFAULTS, SIGNUP_POLICY_VERSION, migratePlatformSignupPolicy } = require("./utils/defaults");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -85,7 +85,18 @@ app.use(errorHandler);
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 // Creates the platform settings row, the platform-admin shop and the super admin.
 const seed = async () => {
-  await PlatformSetting.findOrCreate({ where: { id: 1 }, defaults: { id: 1, data: PLATFORM_DEFAULTS } });
+  const [platformSettings, platformSettingsCreated] = await PlatformSetting.findOrCreate({
+    where: { id: 1 },
+    defaults: { id: 1, data: { ...PLATFORM_DEFAULTS, _signupPolicyVersion: SIGNUP_POLICY_VERSION } },
+  });
+  if (!platformSettingsCreated) {
+    const migratedSettings = migratePlatformSignupPolicy(platformSettings.data);
+    if (migratedSettings) {
+      platformSettings.data = migratedSettings;
+      await platformSettings.save();
+      console.log("Public signups are closed by default. Enable them in Platform Admin settings to reopen.");
+    }
+  }
 
   const adminEmail = String(process.env.ADMIN_EMAIL || "admin@supermarket.com").toLowerCase();
   let admin = await User.findOne({ where: { email: adminEmail } });

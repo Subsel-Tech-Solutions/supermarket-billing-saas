@@ -72,7 +72,9 @@ npm start                   # http://localhost:3000  (proxies /api to :5000)
 Login: `admin@supermarket.com` / password set via `ADMIN_PASSWORD` in `.env`
 (defaults to `admin123` for **local development only** — the server **refuses to start**
 in production unless you set a strong, unique `ADMIN_PASSWORD` of at least 8 characters).
-New businesses can sign up at `/signup` (turn off in Admin → Settings).
+Public sign-ups are closed by default. Enable them in Admin → Settings or set
+`ALLOW_PUBLIC_SIGNUP=true`; when public sign-ups are closed, only valid invite-code holders
+can register at `/signup`.
 
 ## Moving data from the old version
 

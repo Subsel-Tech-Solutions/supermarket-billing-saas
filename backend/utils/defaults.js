@@ -1,13 +1,14 @@
 // utils/defaults.js — default values for platform + per-business settings
 
+const SIGNUP_POLICY_VERSION = 1;
+const publicSignupEnabledByDefault = (env = process.env) => env.ALLOW_PUBLIC_SIGNUP === "true";
+
 const PLATFORM_DEFAULTS = {
   platformName: "SuperMart POS",
   tagline: "A premium operating system for modern retail.",
   supportEmail: "",
   supportPhone: "",
-  allowSignup: process.env.ALLOW_PUBLIC_SIGNUP !== undefined
-    ? process.env.ALLOW_PUBLIC_SIGNUP === "true"
-    : process.env.NODE_ENV !== "production",
+  allowSignup: publicSignupEnabledByDefault(),
   trialDays: 14,
   signupInviteCode: process.env.SIGNUP_INVITE_CODE || "",
   maxTenants: parseInt(process.env.MAX_TENANTS || "100", 10),
@@ -108,7 +109,7 @@ const SHOP_SETTING_KEYS = Object.keys(SHOP_SETTING_DEFAULTS);
 const mergeSettings = (stored) => ({ ...SHOP_SETTING_DEFAULTS, ...(stored || {}) });
 
 const mergePlatform = (stored) => {
-  const s = stored || {};
+  const { _signupPolicyVersion, ...s } = stored || {};
   return {
     ...PLATFORM_DEFAULTS,
     ...s,
@@ -116,8 +117,16 @@ const mergePlatform = (stored) => {
   };
 };
 
+const migratePlatformSignupPolicy = (stored, allowSignup = PLATFORM_DEFAULTS.allowSignup) => {
+  if (stored?._signupPolicyVersion === SIGNUP_POLICY_VERSION) return null;
+  return { ...(stored || {}), allowSignup, _signupPolicyVersion: SIGNUP_POLICY_VERSION };
+};
+
 module.exports = {
   PLATFORM_DEFAULTS,
+  SIGNUP_POLICY_VERSION,
+  publicSignupEnabledByDefault,
+  migratePlatformSignupPolicy,
   SHOP_SETTING_DEFAULTS,
   SHOP_SETTING_KEYS,
   mergeSettings,

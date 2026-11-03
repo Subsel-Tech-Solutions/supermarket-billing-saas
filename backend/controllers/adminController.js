@@ -6,7 +6,7 @@ const { getTenant, closeTenant, stats: tenantStats } = require("../tenant/tenant
 const { createDatabaseIfMissing, assertSafeDbName, sequelize: master } = require("../config/database");
 const { asyncHandler, HttpError, str, int, num, bool, round2 } = require("../utils/helpers");
 const { getPlatformSettings, clearPlatformCache } = require("../utils/settings");
-const { mergePlatform } = require("../utils/defaults");
+const { mergePlatform, SIGNUP_POLICY_VERSION } = require("../utils/defaults");
 const { createShopWithOwner } = require("../utils/shopService");
 const { setAuthCookies } = require("../middleware/auth");
 const { shopPayload } = require("../utils/shopPayload");
@@ -458,7 +458,7 @@ const updatePlatform = asyncHandler(async (req, res) => {
     next.plans = plans;
   }
   const [row] = await PlatformSetting.findOrCreate({ where: { id: 1 }, defaults: { id: 1, data: {} } });
-  row.data = mergePlatform(next);
+  row.data = { ...mergePlatform(next), _signupPolicyVersion: SIGNUP_POLICY_VERSION };
   await row.save();
   clearPlatformCache();
   res.json({ success: true, message: "Platform settings saved", data: { settings: await getPlatformSettings(true) } });
