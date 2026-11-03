@@ -1,6 +1,6 @@
 // controllers/billingController.js — POS sales, returns, cancellations, held bills
 const { Op } = require("sequelize");
-const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, normalizePhone, isValidPhone } = require("../utils/helpers");
+const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, normalizePhone, isValidPhone, assertPriceWithinMrp } = require("../utils/helpers");
 const { calculateBill, settlePayments } = require("../utils/billMath");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { rangeFromStrings } = require("../utils/dates");
@@ -95,13 +95,29 @@ const createBill = asyncHandler(async (req, res) => {
     }
 
     // 3) Discounts
-    const lines = products.map(({ product, item }) => ({
+    const lines = products.map(({ product, item }) => {
+      const price = Number(product.price);
+      if (product.mrp && Number(product.mrp) > 0) {
+        const mrp = Number(product.mrp);
+        const effectiveUnitRate = settings.pricesIncludeTax || !settings.taxEnabled
+          ? price
+          : round2(price * (1 + (Number(product.taxRate) || 0) / 100));
+        if (effectiveUnitRate > mrp + 0.001) {
+          throw new HttpError(
+            400,
+            `Cannot bill "${product.name}" at ₹${effectiveUnitRate.toFixed(2)}${settings.pricesIncludeTax ? "" : " (including tax)"} — exceeds MRP of ₹${mrp.toFixed(2)}.`,
+            "PRICE_EXCEEDS_MRP",
+          );
+        }
+      }
+      return {
       product,
       price: Number(product.price),
       quantity: item.quantity,
       discount: item.discount,
       taxRate: Number(product.taxRate) || 0,
-    }));
+      };
+    });
     const preview = calculateBill(lines, { pricesIncludeTax: settings.pricesIncludeTax, taxEnabled: settings.taxEnabled, roundOff: false });
     const netAfterItems = round2(preview.subtotal - preview.itemDiscount);
     let billDiscount = round2(num(body.discountAmount));

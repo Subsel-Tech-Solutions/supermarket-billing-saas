@@ -1,6 +1,6 @@
 // controllers/productController.js — inventory (tenant database)
 const { Op, fn, col, literal } = require("sequelize");
-const { asyncHandler, HttpError, num, str, bool, round2, round3, paging } = require("../utils/helpers");
+const { asyncHandler, HttpError, num, str, bool, round2, round3, paging, assertPriceWithinMrp } = require("../utils/helpers");
 const { getPlatformSettings, getShopSettings, planLimits } = require("../utils/settings");
 const { moveStock } = require("../utils/stock");
 
@@ -51,6 +51,9 @@ const productFields = (b, partial = false) => {
   if (has("supplierId")) out.supplierId = b.supplierId ? parseInt(b.supplierId, 10) || null : null;
   if (has("description")) out.description = str(b.description, 5000);
   if (has("isActive") && b.isActive !== undefined) out.isActive = bool(b.isActive);
+  if (out.price !== undefined && out.mrp !== undefined) {
+    assertPriceWithinMrp(out.price, out.mrp, out.name || "Product");
+  }
   return out;
 };
 
@@ -179,6 +182,7 @@ const createProduct = asyncHandler(async (req, res) => {
   const data = productFields(req.body || {});
   if (!data.name) throw new HttpError(400, "Product name is required");
   if (req.body.price === undefined || req.body.price === "") throw new HttpError(400, "Selling price is required");
+  assertPriceWithinMrp(data.price, data.mrp, data.name);
   assertQuantity(req.body.quantity, "Opening stock");
   assertQuantity(req.body.reorderLevel, "Reorder level");
   await assertProductLimit(req);
@@ -209,6 +213,9 @@ const updateProduct = asyncHandler(async (req, res) => {
   assertQuantity(req.body.quantity, "Stock");
   assertQuantity(req.body.reorderLevel, "Reorder level");
   if (data.barcode !== undefined) await assertBarcodeFree(db, data.barcode, product.id);
+  const targetPrice = data.price !== undefined ? data.price : Number(product.price);
+  const targetMrp = data.mrp !== undefined ? data.mrp : product.mrp;
+  assertPriceWithinMrp(targetPrice, targetMrp, data.name || product.name);
 
   const t = await req.tenant.sequelize.transaction();
   try {
@@ -293,6 +300,9 @@ const scanBarcode = asyncHandler(async (req, res) => {
       if (b.costPrice !== undefined && b.costPrice !== "") updates.costPrice = round2(num(b.costPrice));
       if (b.name) updates.name = str(b.name, 180);
       if (b.category !== undefined) updates.category = str(b.category, 80);
+      const targetPrice = updates.price !== undefined ? updates.price : Number(product.price);
+      const targetMrp = updates.mrp !== undefined ? updates.mrp : product.mrp;
+      assertPriceWithinMrp(targetPrice, targetMrp, updates.name || product.name);
       if (Object.keys(updates).length) await product.update(updates, { transaction: t });
       if (quantity > 0) await moveStock(db, product, quantity, { type: "scan", note: "Stock added by scan", userName: req.user.username, transaction: t });
       await t.commit();
@@ -448,6 +458,14 @@ const bulkImport = asyncHandler(async (req, res) => {
 
         attemptedRows.push({ rowNum });
         if (product) {
+          const targetPrice = data.price !== undefined ? data.price : Number(product.price);
+          const targetMrp = data.mrp !== undefined ? data.mrp : product.mrp;
+          try {
+            assertPriceWithinMrp(targetPrice, targetMrp, name);
+          } catch (err) {
+            addError(rowNum, err.message);
+            continue;
+          }
           const previousBarcode = existing.barcode;
           const previousName = existing.name;
           const wasActive = existing.isActive;

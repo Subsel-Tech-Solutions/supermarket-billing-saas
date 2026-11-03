@@ -218,6 +218,10 @@ export default function BarcodeGenerator() {
       toast.error("Barcode required");
       return;
     }
+    if (form.mrp && parseFloat(form.price) > parseFloat(form.mrp)) {
+      toast.error(`Selling price (₹${form.price}) cannot exceed MRP (₹${form.mrp})`);
+      return;
+    }
     setSaving(true);
     try {
       await productAPI.scan({
@@ -250,6 +254,10 @@ export default function BarcodeGenerator() {
     }
     if (!form.price) {
       toast.error("Sell price required");
+      return;
+    }
+    if (form.mrp && parseFloat(form.price) > parseFloat(form.mrp)) {
+      toast.error(`Selling price (₹${form.price}) cannot exceed MRP (₹${form.mrp})`);
       return;
     }
     const newLabels = Array.from({ length: parseInt(copies) || 1 }, () => ({

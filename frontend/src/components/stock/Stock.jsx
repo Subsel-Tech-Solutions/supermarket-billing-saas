@@ -161,7 +161,7 @@ function ProductModal({ isOpen, onClose, product, onSaved }) {
     if (form.price === "" || num(form.price) < 0) return toast.error("Selling price is required");
     if (form.netQty.trim() && !/^[0-9]/.test(form.netQty.trim())) return toast.error("Net quantity must start with a number (e.g. 500ml, 1kg)");
     if (form.mrp !== "" && num(form.mrp) > 0 && num(form.price) > num(form.mrp)) {
-      if (!window.confirm("Selling price is higher than MRP. Save anyway?")) return;
+      return toast.error(`Selling price (₹${form.price}) cannot exceed MRP (₹${form.mrp})`);
     }
     setLoading(true);
     try {

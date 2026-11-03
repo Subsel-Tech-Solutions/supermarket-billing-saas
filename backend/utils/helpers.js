@@ -74,6 +74,25 @@ const paging = (query, defLimit = 20, maxLimit = 500) => {
   return { page, limit, offset: (page - 1) * limit };
 };
 
+/**
+ * Asserts that selling price does not exceed declared Maximum Retail Price (MRP).
+ * Selling above MRP is a statutory offence under the Legal Metrology Act & Consumer Protection Act.
+ * If mrp is null, undefined, or 0 (e.g. loose produce/staples), the check is skipped.
+ */
+const assertPriceWithinMrp = (price, mrp, productName = "Product") => {
+  const p = Number(price);
+  const m = mrp !== null && mrp !== undefined && mrp !== "" ? Number(mrp) : null;
+  if (m !== null && Number.isFinite(m) && m > 0) {
+    if (Number.isFinite(p) && p > m + 0.001) {
+      throw new HttpError(
+        400,
+        `Selling price (₹${p.toFixed(2)}) cannot exceed MRP (₹${m.toFixed(2)}) for "${productName}". Selling above MRP is a statutory violation.`,
+        "PRICE_EXCEEDS_MRP",
+      );
+    }
+  }
+};
+
 module.exports = {
   asyncHandler,
   HttpError,
@@ -87,4 +106,5 @@ module.exports = {
   normalizePhone,
   isValidPhone,
   paging,
+  assertPriceWithinMrp,
 };
