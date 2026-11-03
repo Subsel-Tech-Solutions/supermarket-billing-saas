@@ -1,10 +1,21 @@
-// controllers/authController.js
-const { User, Shop } = require("../models/master");
-const { signToken, isSuperAdminUser } = require("../middleware/auth");
+// controllers/authController.js — HTTP-only cookie-based authentication with refresh rotation & revocation
+const jwt = require("jsonwebtoken");
+const { User, Shop, RefreshToken } = require("../models/master");
+const {
+  setAuthCookies,
+  clearAuthCookies,
+  revokeAllUserTokens,
+  revokeTokenFamily,
+  hashToken,
+  isSuperAdminUser,
+} = require("../middleware/auth");
+const { setCsrfCookie } = require("../middleware/csrf");
 const { asyncHandler, HttpError, str } = require("../utils/helpers");
 const { getPlatformSettings } = require("../utils/settings");
 const { shopPayload } = require("../utils/shopPayload");
 const { createShopWithOwner } = require("../utils/shopService");
+
+const JWT_REFRESH_SECRET = () => process.env.JWT_REFRESH_SECRET || `${process.env.JWT_SECRET}_refresh`;
 
 const sessionPayload = async (user, shop) => {
   const platform = await getPlatformSettings();
@@ -15,22 +26,24 @@ const sessionPayload = async (user, shop) => {
   };
 };
 
-// POST /api/auth/register — public SaaS signup (creates business + owner + private DB)
+// POST /api/auth/register — public SaaS signup (creates business + owner + private DB + cookies)
 const register = asyncHandler(async (req, res) => {
   const platform = await getPlatformSettings();
   if (!platform.allowSignup) throw new HttpError(403, "New signups are currently closed. Contact the administrator.");
 
   const { shopName, username, email, password, phone, address, businessType } = req.body || {};
   const { shop, user } = await createShopWithOwner({ shopName, username, email, password, phone, address, businessType });
-  const token = signToken(user);
+
+  await setAuthCookies(res, user);
+
   res.status(201).json({
     success: true,
     message: "Account created successfully",
-    data: { token, ...(await sessionPayload(user, shop)) },
+    data: await sessionPayload(user, shop),
   });
 });
 
-// POST /api/auth/login
+// POST /api/auth/login — authenticates and sets HTTP-only cookies
 const login = asyncHandler(async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = req.body?.password;
@@ -45,16 +58,125 @@ const login = asyncHandler(async (req, res) => {
   user.lastLoginAt = new Date();
   await user.save({ fields: ["lastLoginAt"] });
 
+  await setAuthCookies(res, user);
+
   res.json({
     success: true,
     message: "Login successful",
-    data: { token: signToken(user), ...(await sessionPayload(user, user.shop)) },
+    data: await sessionPayload(user, user.shop),
   });
 });
 
-// GET /api/auth/me
+// POST /api/auth/refresh — rotates refresh token & issues new access token in HTTP-only cookies
+const refresh = asyncHandler(async (req, res) => {
+  const rawRefreshToken = req.cookies?.refreshToken;
+  if (!rawRefreshToken) {
+    clearAuthCookies(res);
+    throw new HttpError(401, "No refresh token provided", "NO_REFRESH_TOKEN");
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(rawRefreshToken, JWT_REFRESH_SECRET());
+  } catch (err) {
+    clearAuthCookies(res);
+    throw new HttpError(401, "Refresh token expired or invalid", "REFRESH_TOKEN_EXPIRED");
+  }
+
+  const tokenHash = hashToken(rawRefreshToken);
+  const tokenRecord = await RefreshToken.findOne({ where: { tokenHash } });
+
+  // ── Reuse Detection ───────────────────────────────────────────────────────────
+  // If the token is not found or is already revoked, an attacker or compromised client
+  // is presenting an old refresh token. Revoke the entire family immediately!
+  if (!tokenRecord || tokenRecord.isRevoked) {
+    if (decoded?.family) {
+      await revokeTokenFamily(decoded.family);
+    }
+    if (decoded?.id) {
+      await revokeAllUserTokens(decoded.id);
+    }
+    clearAuthCookies(res);
+    throw new HttpError(401, "Refresh token reuse detected. All sessions revoked for security.", "REFRESH_TOKEN_REUSED");
+  }
+
+  // Check token expiry in DB
+  if (new Date(tokenRecord.expiresAt).getTime() < Date.now()) {
+    tokenRecord.isRevoked = true;
+    await tokenRecord.save();
+    clearAuthCookies(res);
+    throw new HttpError(401, "Refresh token expired", "REFRESH_TOKEN_EXPIRED");
+  }
+
+  // Load user from master DB
+  const user = await User.findByPk(decoded.id, { include: [{ model: Shop, as: "shop" }] });
+  if (!user || !user.isActive) {
+    clearAuthCookies(res);
+    throw new HttpError(401, "User not found or inactive", "USER_INACTIVE");
+  }
+
+  // Validate tokenVersion
+  if ((user.tokenVersion || 0) !== (decoded.tokenVersion || 0)) {
+    tokenRecord.isRevoked = true;
+    await tokenRecord.save();
+    clearAuthCookies(res);
+    throw new HttpError(401, "Session revoked. Please login again.", "TOKEN_REVOKED");
+  }
+
+  if (!user.shop) {
+    clearAuthCookies(res);
+    throw new HttpError(403, "Shop not found", "SHOP_NOT_FOUND");
+  }
+
+  if (!user.shop.isActive && !isSuperAdminUser(user)) {
+    clearAuthCookies(res);
+    throw new HttpError(403, "Your shop is inactive. Contact support.", "SHOP_INACTIVE");
+  }
+
+  // ── Token Rotation ────────────────────────────────────────────────────────────
+  // Mark current refresh token as revoked/used
+  tokenRecord.isRevoked = true;
+  await tokenRecord.save();
+
+  // Issue new tokens in the SAME family
+  await setAuthCookies(res, user, tokenRecord.family);
+
+  res.json({
+    success: true,
+    message: "Session refreshed successfully",
+    data: await sessionPayload(user, user.shop),
+  });
+});
+
+// POST /api/auth/logout — revokes session & clears authentication cookies
+const logout = asyncHandler(async (req, res) => {
+  const rawRefreshToken = req.cookies?.refreshToken;
+  if (rawRefreshToken) {
+    try {
+      const decoded = jwt.verify(rawRefreshToken, JWT_REFRESH_SECRET());
+      if (decoded?.family) {
+        await revokeTokenFamily(decoded.family);
+      }
+    } catch {
+      // Ignore verification error on logout
+      const tokenHash = hashToken(rawRefreshToken);
+      await RefreshToken.update({ isRevoked: true }, { where: { tokenHash } });
+    }
+  }
+
+  clearAuthCookies(res);
+  res.json({ success: true, message: "Logged out successfully" });
+});
+
+// GET /api/auth/me — returns current session payload
 const getMe = asyncHandler(async (req, res) => {
   res.json({ success: true, data: await sessionPayload(req.user, req.shop) });
+});
+
+// GET /api/auth/csrf — sets & returns CSRF token
+const getCsrf = asyncHandler(async (req, res) => {
+  const token = setCsrfCookie(res);
+  res.json({ success: true, csrfToken: token });
 });
 
 // PUT /api/auth/profile
@@ -69,16 +191,26 @@ const updateProfile = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Profile updated", data: { user: { ...user.toSafeJSON(), isSuperAdmin: req.isSuperAdmin } } });
 });
 
-// PUT /api/auth/change-password
+// PUT /api/auth/change-password — revokes all old sessions & issues fresh cookies
 const changePassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword) throw new HttpError(400, "Both passwords are required");
   if (String(newPassword).length < 6) throw new HttpError(400, "New password must be at least 6 characters");
   const user = await User.findByPk(req.user.id);
   if (!(await user.comparePassword(currentPassword))) throw new HttpError(400, "Current password is incorrect");
+
+  // Increment tokenVersion to immediately invalidate all previously issued access tokens
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
   user.password = String(newPassword);
   await user.save();
+
+  // Invalidate all existing refresh tokens for this user
+  await RefreshToken.update({ isRevoked: true }, { where: { userId: user.id } });
+
+  // Issue fresh cookies for the current session
+  await setAuthCookies(res, user);
+
   res.json({ success: true, message: "Password updated successfully" });
 });
 
-module.exports = { register, login, getMe, updateProfile, changePassword };
+module.exports = { register, login, refresh, logout, getMe, getCsrf, updateProfile, changePassword };
