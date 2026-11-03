@@ -1,3 +1,14 @@
+// Known temporary / disposable email domains
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  "tempmail.com", "throwawaymail.com", "guerrillamail.com", "mailinator.com",
+  "10minutemail.com", "trashmail.com", "yopmail.com", "sharklasers.com",
+  "dispostable.com", "getairmail.com", "temp-mail.org", "fakeinbox.com",
+]);
+
+const isDisposableEmail = (email) => {
+  const domain = String(email || "").split("@")[1]?.toLowerCase();
+  return domain ? DISPOSABLE_EMAIL_DOMAINS.has(domain) : false;
+};
 // utils/shopService.js — create a business: master rows + its own private database
 const { sequelize, Shop, User } = require("../models/master");
 const { provisionTenant, dbNameForShop, closeTenant } = require("../tenant/tenantManager");
@@ -22,6 +33,16 @@ const createShopWithOwner = async ({
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new HttpError(400, "Enter a valid email address");
 
   const platform = await getPlatformSettings();
+  if (isDisposableEmail(mail)) {
+    throw new HttpError(400, "Disposable and temporary email addresses are not allowed. Please use a valid business email.");
+  }
+
+  const maxTenants = platform.maxTenants || parseInt(process.env.MAX_TENANTS || "100", 10);
+  const activeCount = await Shop.count({ where: { isActive: true } });
+  if (activeCount >= maxTenants) {
+    throw new HttpError(429, "New business registrations are currently at capacity. Please contact support.", "TENANT_QUOTA_REACHED");
+  }
+
   if (await User.findOne({ where: { email: mail } })) throw new HttpError(409, "Email already registered");
 
   const validDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : platform.trialDays || 14;
