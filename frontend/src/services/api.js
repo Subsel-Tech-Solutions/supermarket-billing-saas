@@ -51,7 +51,7 @@ api.interceptors.response.use(
     const url = originalRequest.url || "";
 
     // Network dropped / server unreachable
-    if (!err.response) {
+    if (!err.response || status === 502 || status === 503 || status === 504) {
       window.dispatchEvent(new CustomEvent("api-unreachable"));
     }
 

@@ -31,17 +31,22 @@ const bar = (tone, content, key) => (
 );
 
 function OfflineBanner() {
-  const { online, recheck } = useOnline();
+  const { online, recheck, isChecking } = useOnline();
   if (online) return null;
   return bar(
     "danger",
     <>
       <WifiOff size={14} style={{ flexShrink: 0 }} />
       <span>
-        <b>No connection to the server.</b> Items already in the cart are safe — finish the bill once the connection is back.
+        <b>No connection to the server.</b> Selling &amp; checkouts are paused to prevent stock &amp; invoice numbering errors. Active carts are preserved.
       </span>
-      <button className="btn-ghost" style={{ padding: "4px 10px", marginLeft: "auto" }} onClick={recheck}>
-        <RefreshCw size={12} /> Retry
+      <button
+        className="btn-ghost"
+        style={{ padding: "4px 10px", marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}
+        onClick={recheck}
+        disabled={isChecking}
+      >
+        <RefreshCw size={12} className={isChecking ? "spin" : ""} /> {isChecking ? "Checking…" : "Retry"}
       </button>
     </>,
     "offline",

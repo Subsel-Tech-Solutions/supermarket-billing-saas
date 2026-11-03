@@ -9,9 +9,11 @@ const PROBE_MS = 8000;
 
 export default function useOnline() {
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
+  const [checking, setChecking] = useState(false);
   const timer = useRef(null);
 
   const probe = useCallback(async () => {
+    setChecking(true);
     try {
       const res = await fetch(`${BASE_URL}/health`, { method: "GET", cache: "no-store" });
       setOnline(res.ok);
@@ -19,6 +21,8 @@ export default function useOnline() {
     } catch {
       setOnline(false);
       return false;
+    } finally {
+      setChecking(false);
     }
   }, []);
 
@@ -52,5 +56,5 @@ export default function useOnline() {
     return () => timer.current && clearInterval(timer.current);
   }, [online, probe]);
 
-  return { online, recheck: probe };
+  return { online, recheck: probe, isChecking: checking };
 }

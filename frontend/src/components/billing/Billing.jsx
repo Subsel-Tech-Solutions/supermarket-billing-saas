@@ -19,6 +19,8 @@ import {
   X,
   Gift,
   Percent,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
 import BarcodeScanner from "../shared/BarcodeScanner";
 import { productAPI, billAPI, customerAPI, openInvoice, newClientRef } from "../../services/api";
@@ -29,6 +31,7 @@ import { Spinner, Modal, FormField } from "../shared/UI";
 import { useSettings } from "../../context/SettingsContext";
 import { useAuth } from "../../context/AuthContext";
 import usePersistentCart from "../../hooks/usePersistentCart";
+import useOnline from "../../hooks/useOnline";
 
 const mono = { fontFamily: "JetBrains Mono, monospace" };
 const qtyBtn = {
@@ -159,6 +162,7 @@ export default function Billing() {
   // The cart lives in localStorage, so a refresh, a crash, an expired session or an
   // accidentally closed tab does not mean re-scanning the whole trolley.
   const { cart, setCart, meta, setMeta, restored, clearCart, dismissRestored } = usePersistentCart();
+  const { online, recheck, isChecking } = useOnline();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -241,6 +245,10 @@ export default function Billing() {
     async (barcode) => {
       const code = String(barcode).trim();
       if (!code) return;
+      if (!online) {
+        toast.error("Offline: cannot lookup barcode while disconnected.", { id: "scan-offline" });
+        return;
+      }
       try {
         const res = await productAPI.getByBarcode(code);
         addToCart(res.data.data.product);
@@ -372,6 +380,7 @@ export default function Billing() {
   }, [loadHeld]);
 
   const holdCurrent = async () => {
+    if (!online) return toast.error("Cannot hold bill while offline: connection to server is required.", { id: "hold-offline" });
     if (!cart.length) return toast.error("Cart is empty");
     try {
       await billAPI.hold({
@@ -440,6 +449,7 @@ export default function Billing() {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const submitBill = async () => {
+    if (!online) return toast.error("Counter Paused: Cannot submit sale while offline. Connection to server is required.", { id: "offline-submit-blocked" });
     if (!cart.length || submitting) return;
 
     // A shortfall is only ever a credit sale when the cashier has ticked the box. The
@@ -513,6 +523,7 @@ export default function Billing() {
   };
 
   const openCheckout = () => {
+    if (!online) return toast.error("Counter Paused: Selling is stopped while offline. Connection to server is required.", { id: "offline-selling-paused" });
     if (!cart.length) return;
     setCartOpen(false);
     setCheckout((c) => ({ ...c, method: methods.includes(c.method) ? c.method : methods[0] }));
@@ -521,7 +532,7 @@ export default function Billing() {
 
   // ── Keyboard: USB scanner (typing outside inputs) + shortcuts ─────────────
   const handlersRef = useRef({});
-  handlersRef.current = { handleScan, openCheckout, holdCurrent, submitBill, checkoutOpen };
+  handlersRef.current = { handleScan, openCheckout, holdCurrent, submitBill, checkoutOpen, online };
   useEffect(() => {
     const onKey = (e) => {
       const h = handlersRef.current;
@@ -532,11 +543,19 @@ export default function Billing() {
       }
       if (e.key === "F4") {
         e.preventDefault();
+        if (!h.online) {
+          toast.error("Cannot hold bill while offline: connection to server is required.", { id: "hold-offline" });
+          return;
+        }
         h.holdCurrent();
         return;
       }
       if (e.key === "F9" || e.key === "F12") {
         e.preventDefault();
+        if (!h.online) {
+          toast.error("Counter Paused: Cannot checkout while offline. Billing will resume once connection is restored.", { id: "offline-checkout-blocked" });
+          return;
+        }
         if (h.checkoutOpen) h.submitBill();
         else h.openCheckout();
         return;
@@ -570,6 +589,20 @@ export default function Billing() {
     <div className="billing-layout">
       {/* ── Left panel ── */}
       <div className="billing-main">
+        {!online && (
+          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px", background: "var(--danger-light)", border: "1px solid var(--danger)", borderRadius: 10, marginBottom: 16, color: "var(--danger)", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <WifiOff size={18} style={{ flexShrink: 0 }} />
+              <div>
+                <strong style={{ fontSize: 13.5, display: "block" }}>Counter Paused — Offline</strong>
+                <span style={{ fontSize: 12.5, opacity: 0.9 }}>Unable to reach the billing server. Selling is stopped to protect stock levels &amp; sequential invoice numbering. Scanned cart items are preserved.</span>
+              </div>
+            </div>
+            <button onClick={recheck} disabled={isChecking} className="btn-ghost" style={{ padding: "6px 12px", borderColor: "var(--danger)", color: "var(--danger)", background: "var(--bg-card)", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 500 }}>
+              <RefreshCw size={13} className={isChecking ? "spin" : ""} /> {isChecking ? "Checking..." : "Retry Connection"}
+            </button>
+          </div>
+        )}
         <div className="section-head" style={{ marginBottom: 0 }}>
           <div style={{ minWidth: 0 }}>
             <h1 style={{ fontFamily: "'Fraunces','Playfair Display',serif", fontSize: "clamp(21px, 4.5vw, 26px)", fontWeight: 300, color: "var(--text-primary)" }}>
@@ -769,7 +802,7 @@ export default function Billing() {
         <button className="btn-ghost" style={{ flexShrink: 0 }} onClick={() => setCartOpen(true)} disabled={!cart.length}>
           View
         </button>
-        <button className="btn-primary" style={{ flexShrink: 0 }} onClick={openCheckout} disabled={!cart.length}>
+        <button className="btn-primary" style={{ flexShrink: 0, opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }} onClick={openCheckout} disabled={!cart.length || !online}>
           <Receipt size={14} /> Pay
         </button>
       </div>
@@ -793,7 +826,7 @@ export default function Billing() {
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
             {cart.length > 0 && (
               <>
-                <button onClick={holdCurrent} style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                <button onClick={holdCurrent} disabled={!online} style={{ fontSize: 12, color: !online ? "var(--text-muted)" : "var(--text-secondary)", opacity: !online ? 0.5 : 1, background: "none", border: "none", cursor: !online ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 4 }} title={!online ? "Cannot hold bill while offline" : "Hold current bill"}>
                   <PauseCircle size={13} /> Hold
                 </button>
                 <button
@@ -850,8 +883,8 @@ export default function Billing() {
                 <span style={{ ...mono, color: "var(--accent-dark)" }}>{formatCurrency(calc.totalAmount)}</span>
               </div>
             </div>
-            <button onClick={openCheckout} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14 }}>
-              <Receipt size={15} /> Checkout (F9)
+            <button onClick={openCheckout} disabled={!cart.length || !online} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14, opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
+              {online ? <><Receipt size={15} /> Checkout (F9)</> : <><WifiOff size={15} /> Selling Paused (Offline)</>}
             </button>
           </div>
         )}
@@ -860,6 +893,12 @@ export default function Billing() {
       {/* ── Checkout modal ── */}
       <Modal isOpen={checkoutOpen} onClose={() => setCheckoutOpen(false)} title="Complete sale" maxWidth={520}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {!online && (
+            <div style={{ background: "var(--danger-light)", color: "var(--danger)", padding: "10px 14px", borderRadius: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+              <WifiOff size={16} style={{ flexShrink: 0 }} />
+              <span>Connection lost. Selling is paused until the server reconnects. Scanned cart items remain safe.</span>
+            </div>
+          )}
           <div className="card-sunken" style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -1062,8 +1101,8 @@ export default function Billing() {
             <button onClick={() => setCheckoutOpen(false)} className="btn-ghost" style={{ flex: 1, justifyContent: "center" }}>
               Back
             </button>
-            <button onClick={submitBill} disabled={submitting} className="btn-primary" style={{ flex: 2, justifyContent: "center", padding: "11px" }}>
-              {submitting ? <Spinner size={14} color="var(--bg)" /> : <CheckCircle size={15} />} Confirm sale (F9)
+            <button onClick={submitBill} disabled={submitting || !online} className="btn-primary" style={{ flex: 2, justifyContent: "center", padding: "11px", opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
+              {submitting ? <Spinner size={14} color="var(--bg)" /> : !online ? <><WifiOff size={15} /> Offline — Selling Paused</> : <><CheckCircle size={15} /> Confirm sale (F9)</>}
             </button>
           </div>
         </div>
