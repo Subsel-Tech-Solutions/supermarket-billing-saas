@@ -1,7 +1,7 @@
 // src/components/stock/Stock.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import { productAPI, reportAPI, supplierAPI } from "../../services/api";
-import { formatCurrency, formatQty, formatDateTime, getErrorMessage, debounce, num, getStockBadge, numericOnly, blockNonNumericKeys } from "../../utils/helpers";
+import { formatCurrency, formatQty, formatDateTime, getErrorMessage, debounce, num, getStockBadge, numericOnly, blockNonNumericKeys, escapeHtml } from "../../utils/helpers";
 import { useSettings } from "../../context/SettingsContext";
 import {
   Spinner,
@@ -1806,8 +1806,8 @@ export default function Stock() {
 
     const labelCard = (name, barcode, mrp, price) => `
       <div class="label-card">
-        <div class="product-name">${name}</div>
-        <svg data-barcode="${barcode || name}" class="barcode-svg"></svg>
+        <div class="product-name">${escapeHtml(name || "")}</div>
+        <svg data-barcode="${escapeHtml(barcode || name || "")}" class="barcode-svg"></svg>
         <div class="price-row">
           ${mrp && parseFloat(mrp) > 0 ? `<span style="font-weight:800;font-size:13px;color:#888;">MRP <span class="mrp">&#8377;${parseFloat(mrp).toFixed(0)}</span></span>` : `<span></span>`}
           <span class="price">&#8377;${parseFloat(price).toFixed(0)}</span>
