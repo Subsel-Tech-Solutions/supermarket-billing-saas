@@ -270,6 +270,7 @@ export const reportAPI = {
   getDayEnd: (params) => api.get("/reports/day-end", { params }),
   getStockReport: (params) => api.get("/reports/stock", { params }),
   getExpiry: (params) => api.get("/reports/expiry", { params }),
+  getAuditLogs: (params) => api.get("/reports/audit-logs", { params }),
 };
 
 // ── Platform admin ───────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "migrate:legacy": "node scripts/migrate-legacy.js",
     "cleanup:trials": "node scripts/cleanup-trials.js",
-    "test": "node tests/billMath.test.js && node tests/authSecurity.test.js && node tests/phoneValidation.test.js && node tests/creditSecurity.test.js && node tests/signupSecurity.test.js && node tests/xssSecurity.test.js && node tests/invoicePdf.test.js && node tests/dayEndCancellation.test.js && node tests/mrpCompliance.test.js"
+    "test": "node tests/billMath.test.js && node tests/authSecurity.test.js && node tests/phoneValidation.test.js && node tests/creditSecurity.test.js && node tests/signupSecurity.test.js && node tests/xssSecurity.test.js && node tests/invoicePdf.test.js && node tests/dayEndCancellation.test.js && node tests/mrpCompliance.test.js && node tests/numberToWords.test.js && node tests/corsSecurity.test.js && node tests/poolProtection.test.js && node tests/auditLog.test.js"
   },
   "dependencies": {
     "@fontsource/anek-gurmukhi": "5.3.0",

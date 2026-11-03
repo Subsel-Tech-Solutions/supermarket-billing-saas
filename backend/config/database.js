@@ -66,10 +66,10 @@ const createTenantSequelize = (dbName) => {
   return new Sequelize(dbName, DB_USER(), DB_PASS(), {
     ...baseOptions(),
     pool: {
-      max: parseInt(process.env.TENANT_POOL_MAX || "4", 10),
+      max: parseInt(process.env.TENANT_POOL_MAX || "2", 10),
       min: 0,
       acquire: 30000,
-      idle: 10000,
+      idle: parseInt(process.env.TENANT_POOL_IDLE || "5000", 10),
     },
   });
 };

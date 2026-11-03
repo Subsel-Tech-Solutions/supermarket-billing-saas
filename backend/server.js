@@ -11,6 +11,7 @@ const { provisionTenant, dbNameForShop, closeAll, stats } = require("./tenant/te
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const { securityHeaders, apiLimiter } = require("./middleware/security");
 const { verifyCsrf } = require("./middleware/csrf");
+const { buildCorsOptions } = require("./utils/corsConfig");
 const { PLATFORM_DEFAULTS, SIGNUP_POLICY_VERSION, migratePlatformSignupPolicy } = require("./utils/defaults");
 
 const app = express();
@@ -21,8 +22,8 @@ const PORT = process.env.PORT || 5000;
 // this every request looks like it comes from the proxy and rate limiting is useless.
 app.set("trust proxy", process.env.TRUST_PROXY === "false" ? false : 1);
 
-const origins = (process.env.CORS_ORIGIN || "*").split(",").map((s) => s.trim());
-app.use(cors({ origin: origins.includes("*") ? true : origins, credentials: true }));
+
+app.use(cors(buildCorsOptions()));
 app.use(securityHeaders);
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
@@ -236,4 +237,4 @@ const start = async () => {
 
 if (require.main === module) start();
 
-module.exports = { app, assertAdminPasswordSecurity };
+module.exports = { app, assertAdminPasswordSecurity, buildCorsOptions };

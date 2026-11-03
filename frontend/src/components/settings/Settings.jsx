@@ -78,9 +78,9 @@ const SAMPLE_BILL = {
   customerPhone: "9876543210",
   cashierName: "Cashier",
   items: [
-    { productName: "Ponni Rice 5kg", quantity: 1, unit: "pcs", unitPrice: 340, mrp: 380, taxRate: 5, discount: 0, totalPrice: 340 },
-    { productName: "Tomato (loose)", quantity: 1.25, unit: "kg", unitPrice: 40, mrp: null, taxRate: 0, discount: 0, totalPrice: 50 },
-    { productName: "Sunflower Oil 1L", quantity: 2, unit: "pcs", unitPrice: 145, mrp: 160, taxRate: 5, discount: 10, totalPrice: 280 },
+    { productName: "Ponni Rice 5kg", hsnCode: "1006", quantity: 1, unit: "pcs", unitPrice: 340, mrp: 380, taxRate: 5, discount: 0, totalPrice: 340 },
+    { productName: "Tomato (loose)", hsnCode: "0702", quantity: 1.25, unit: "kg", unitPrice: 40, mrp: null, taxRate: 0, discount: 0, totalPrice: 50 },
+    { productName: "Sunflower Oil 1L", hsnCode: "1512", quantity: 2, unit: "pcs", unitPrice: 145, mrp: 160, taxRate: 5, discount: 10, totalPrice: 280 },
   ],
   subtotal: 680,
   itemDiscount: 10,

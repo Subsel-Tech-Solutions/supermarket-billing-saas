@@ -5,6 +5,7 @@ const { calculateBill, settlePayments } = require("../utils/billMath");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { rangeFromStrings } = require("../utils/dates");
 const { moveStock } = require("../utils/stock");
+const { logAudit } = require("../utils/auditLogger");
 const { normalizeGstin, isValidGstin, stateCodeFromGstin, stateCodeFromName, stateNameFromCode } = require("../utils/gst");
 
 const HELD_BILL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -285,6 +286,26 @@ const createBill = asyncHandler(async (req, res) => {
     if (body.heldBillId) await db.HeldBill.destroy({ where: { id: body.heldBillId }, transaction: t });
 
     await t.commit();
+    if (calc.billDiscount > 0 || calc.itemDiscount > 0) {
+      await logAudit(req, {
+        action: "DISCOUNT_APPLIED",
+        entityType: "bill",
+        entityId: bill.billNumber,
+        details: {
+          billId: bill.id,
+          billNumber: bill.billNumber,
+          customerName: bill.customerName,
+          totalAmount: calc.totalAmount,
+        },
+        diff: {
+          subtotal: calc.subtotal,
+          billDiscount: calc.billDiscount,
+          itemDiscount: calc.itemDiscount,
+          totalDiscount: round2(calc.billDiscount + calc.itemDiscount),
+        },
+      });
+    }
+
     const fullBill = await db.Bill.findByPk(bill.id, { include: fullBillInclude(db) });
     res.status(201).json({ success: true, message: "Bill created successfully", data: { bill: fullBill } });
   } catch (err) {
@@ -424,6 +445,22 @@ const cancelBill = asyncHandler(async (req, res) => {
     bill.notes = [bill.notes, `Cancelled by ${req.user.username}${reason ? `: ${reason}` : ""}`].filter(Boolean).join("\n");
     await bill.save({ transaction: t });
     await t.commit();
+    await logAudit(req, {
+      action: "BILL_CANCELLED",
+      entityType: "bill",
+      entityId: bill.billNumber,
+      details: {
+        billId: bill.id,
+        billNumber: bill.billNumber,
+        customerName: bill.customerName,
+        totalAmount: Number(bill.totalAmount) || 0,
+        reason: reason || "No reason specified",
+      },
+      diff: {
+        status: { from: "completed", to: "cancelled" },
+      },
+    });
+
     res.json({ success: true, message: "Bill cancelled and stock restored" });
   } catch (err) {
     if (!t.finished) await t.rollback();
@@ -513,6 +550,24 @@ const returnBill = asyncHandler(async (req, res) => {
     }
 
     await t.commit();
+    await logAudit(req, {
+      action: "BILL_RETURN",
+      entityType: "bill",
+      entityId: bill.billNumber,
+      details: {
+        billId: bill.id,
+        billNumber: bill.billNumber,
+        returnNumber,
+        refundAmount: total,
+        refundMethod,
+        reason: str(body.reason, 255) || "No reason specified",
+      },
+      diff: {
+        status: { to: fullyReturned ? "returned" : "partially_returned" },
+        returnedAmount: { to: Number(bill.returnedAmount) },
+      },
+    });
+
     const updated = await db.Bill.findByPk(bill.id, { include: fullBillInclude(db) });
     res.status(201).json({ success: true, message: `Return ${returnNumber} saved — refund ${total.toFixed(2)}`, data: { bill: updated, returnNumber, amount: total } });
   } catch (err) {

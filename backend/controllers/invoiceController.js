@@ -1,7 +1,7 @@
 // controllers/invoiceController.js — PDF invoice (thermal 58mm / 80mm or A4) from shop settings
 const PDFDocument = require("pdfkit");
 const path = require("path");
-const { asyncHandler, HttpError } = require("../utils/helpers");
+const { asyncHandler, HttpError, amountToWords } = require("../utils/helpers");
 const { getShopSettings } = require("../utils/settings");
 
 const money = (v, sym) => `${sym}${(Number(v) || 0).toFixed(2)}`;
@@ -185,6 +185,7 @@ const thermalInvoice = (doc, bill, s, width) => {
     doc.text(Number(item.totalPrice).toFixed(2), cols.amt, y, { width: colW.amt, align: "right" });
     doc.y = Math.max(after, doc.y);
     const extras = [];
+    if (item.hsnCode) extras.push(`HSN: ${item.hsnCode}`);
     if (s.showMrpOnReceipt && item.mrp && Number(item.mrp) > Number(item.unitPrice)) extras.push(`MRP ${Number(item.mrp).toFixed(2)}`);
     if (Number(item.taxRate) > 0) extras.push(`${s.taxLabel || "GST"} ${Number(item.taxRate)}%`);
     if (Number(item.discount) > 0) extras.push(`Disc ${Number(item.discount).toFixed(2)}`);
@@ -217,6 +218,9 @@ const thermalInvoice = (doc, bill, s, width) => {
   if (Number(bill.roundOff) !== 0) row("Round off", money(bill.roundOff, sym));
   line();
   row("TOTAL", money(bill.totalAmount, sym), true, small + 3);
+  const words = amountToWords(bill.totalAmount, s.currencyName || "Rupees", s.currencySubunit || "Paise");
+  doc.fontSize(small - 0.5).font("Helvetica-Oblique").text(`Amount in words: ${words}`, lx, doc.y, { width: cw, align: "center" });
+  doc.moveDown(0.2);
   line();
 
   (bill.payments || []).forEach((p) => row(`Paid by ${String(p.method).toUpperCase()}`, money(p.amount, sym)));
@@ -344,7 +348,12 @@ const a4Invoice = (doc, bill, s) => {
   if (Number(bill.dueAmount) > 0) tRow("Balance due", money(bill.dueAmount, sym), true);
   if (bill.status === "cancelled") tRow("STATUS", "CANCELLED", true);
 
-  y = Math.max(y + 20, 700);
+  y = Math.max(y + 12, 675);
+  const words = amountToWords(bill.totalAmount, s.currencyName || "Rupees", s.currencySubunit || "Paise");
+  doc.rect(L, y, W, 22).stroke("#dddddd");
+  doc.fillColor("#000").font("Helvetica-Bold").fontSize(8.5).text("Amount Chargeable (in words): ", L + 6, y + 6, { continued: true });
+  doc.font("Helvetica").text(words);
+  y += 28;
   if (y > 780) {
     doc.addPage();
     y = 60;
@@ -370,7 +379,7 @@ const generateInvoice = asyncHandler(async (req, res) => {
   } else {
     const width = format === "thermal58" ? 164 : 227;
     const lineCount = (plain.items || []).length;
-    const height = 430 + lineCount * 30 + (s.logo ? 50 : 0) + (plain.payments || []).length * 12 + (s.termsAndConditions ? 30 : 0);
+    const height = 460 + lineCount * 32 + (s.logo ? 50 : 0) + (plain.payments || []).length * 12 + (s.termsAndConditions ? 30 : 0);
     doc = new PDFDocument({ size: [width, Math.max(420, height)], margins: { top: 10, bottom: 10, left: 8, right: 8 } });
   }
 

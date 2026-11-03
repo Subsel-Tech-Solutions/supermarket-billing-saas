@@ -4,6 +4,7 @@ const { SHOP_SETTING_DEFAULTS, SHOP_SETTING_KEYS, mergeSettings } = require("../
 const { getSettingRow } = require("../utils/settings");
 const { Shop } = require("../models/master");
 const { normalizeGstin, isValidGstin } = require("../utils/gst");
+const { logAudit } = require("../utils/auditLogger");
 
 const ENUMS = {
   themeMode: ["light", "dark", "system"],
@@ -80,6 +81,27 @@ const updateSettings = asyncHandler(async (req, res) => {
     if (next.businessName !== shop.name) changes.name = next.businessName.slice(0, 150);
     if ((next.phone || null) !== (shop.phone || null)) changes.phone = next.phone ? next.phone.slice(0, 20) : null;
     if (Object.keys(changes).length) await shop.update(changes);
+  }
+
+  const changedKeys = {};
+  for (const key of Object.keys(next)) {
+    if (JSON.stringify(current[key]) !== JSON.stringify(next[key])) {
+      if (key === "logo") {
+        changedKeys[key] = { from: current[key] ? "[image]" : null, to: next[key] ? "[image]" : null };
+      } else {
+        changedKeys[key] = { from: current[key], to: next[key] };
+      }
+    }
+  }
+
+  if (Object.keys(changedKeys).length > 0) {
+    await logAudit(req, {
+      action: "SETTINGS_UPDATED",
+      entityType: "setting",
+      entityId: "1",
+      details: { changedKeys: Object.keys(changedKeys) },
+      diff: changedKeys,
+    });
   }
 
   res.json({ success: true, message: "Settings saved", data: { settings: next } });

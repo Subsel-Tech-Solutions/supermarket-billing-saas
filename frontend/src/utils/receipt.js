@@ -1,5 +1,5 @@
 // src/utils/receipt.js — prints a thermal / A4 receipt directly from the browser
-import { escapeHtml as e, num, formatQty } from "./helpers";
+import { escapeHtml as e, num, formatQty, amountToWords } from "./helpers";
 
 const money = (v, sym) => `${sym}${num(v).toFixed(2)}`;
 
@@ -23,6 +23,7 @@ export const buildReceiptHtml = (bill, s = {}) => {
       if (num(it.mrp) > num(it.unitPrice)) savings += (num(it.mrp) - num(it.unitPrice)) * q;
       savings += num(it.discount);
       const extra = [
+        it.hsnCode ? `HSN: ${e(it.hsnCode)}` : "",
         s.showMrpOnReceipt && num(it.mrp) > num(it.unitPrice) ? `MRP ${num(it.mrp).toFixed(2)}` : "",
         num(it.taxRate) > 0 ? `${e(s.taxLabel || "GST")} ${num(it.taxRate)}%` : "",
         num(it.discount) > 0 ? `Disc ${num(it.discount).toFixed(2)}` : "",
@@ -90,6 +91,7 @@ export const buildReceiptHtml = (bill, s = {}) => {
   </table>
   <div class="hr"></div>
   <table>${line("TOTAL", money(bill.totalAmount, sym), "total")}</table>
+  <div class="muted c" style="font-style:italic;margin:3px 0 5px;font-size:${fs - 1}px;">Amount in words: ${e(amountToWords(bill.totalAmount, s.currencyName || "Rupees", s.currencySubunit || "Paise"))}</div>
   <div class="hr"></div>
   <table>
     ${payments.map((p) => line(`Paid (${e(String(p.method).toUpperCase())})`, money(p.amount, sym))).join("")}

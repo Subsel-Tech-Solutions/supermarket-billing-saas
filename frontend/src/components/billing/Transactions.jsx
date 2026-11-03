@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
 import { FileText, XCircle, Printer, RotateCcw, Download } from "lucide-react";
 import { billAPI, openInvoice } from "../../services/api";
-import { formatCurrency, formatDateTime, formatQty, getErrorMessage, num, PAYMENT_LABELS, paymentColor, downloadCSV, debounce, numericOnly, blockNonNumericKeys } from "../../utils/helpers";
+import { formatCurrency, formatDateTime, formatQty, getErrorMessage, num, PAYMENT_LABELS, paymentColor, downloadCSV, debounce, numericOnly, blockNonNumericKeys, amountToWords } from "../../utils/helpers";
 import { printReceipt } from "../../utils/receipt";
 import { PageLoader, EmptyState, Modal, SectionHeader, Page, Pagination, Pill, Table, Th, Td, SearchInput, Spinner, FormField } from "../shared/UI";
 import { useSettings } from "../../context/SettingsContext";
@@ -251,7 +251,7 @@ export default function Transactions() {
                     <Td primary>
                       <p style={{ fontWeight: 500 }}>{item.productName}</p>
                       <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                        {[num(item.taxRate) > 0 && `GST ${num(item.taxRate)}%`, num(item.discount) > 0 && `disc ${formatCurrency(item.discount)}`, num(item.returnedQty) > 0 && `returned ${formatQty(item.returnedQty)}`]
+                        {[item.hsnCode && `HSN ${item.hsnCode}`, num(item.taxRate) > 0 && `GST ${num(item.taxRate)}%`, num(item.discount) > 0 && `disc ${formatCurrency(item.discount)}`, num(item.returnedQty) > 0 && `returned ${formatQty(item.returnedQty)}`]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
@@ -291,6 +291,9 @@ export default function Transactions() {
                   {formatCurrency(selected.totalAmount)}
                 </span>
               </div>
+              <p style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic", marginTop: -2, marginBottom: 4 }}>
+                {amountToWords(selected.totalAmount)}
+              </p>
               {(selected.payments || []).map((p, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "var(--text-muted)" }}>
                   <span>

@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { PassThrough } = require("stream");
+const zlib = require("zlib");
 
 let businessName = "SuperMart";
 const settingsPath = require.resolve("../utils/settings");
@@ -18,6 +19,26 @@ require.cache[settingsPath] = {
 
 const { generateInvoice } = require("../controllers/invoiceController");
 
+const extractPdfText = (rawString) => {
+  const buf = Buffer.from(rawString, "latin1");
+  let pos = 0, text = "";
+  while ((pos = buf.indexOf(Buffer.from("stream\n"), pos)) !== -1) {
+    const start = pos + 7;
+    const end = buf.indexOf(Buffer.from("\nendstream"), start);
+    if (end === -1) break;
+    try {
+      const dec = zlib.inflateSync(buf.slice(start, end)).toString("latin1");
+      const tjText = dec.replace(/\[([\s\S]*?)\]\s*TJ/g, (_, inner) => {
+        const hexes = inner.match(/<([0-9a-fA-F]+)>/g) || [];
+        return hexes.map((h) => Buffer.from(h.slice(1, -1), "hex").toString("latin1")).join("");
+      });
+      text += " " + tjText;
+    } catch {}
+    pos = end + 10;
+  }
+  return text;
+};
+
 const createInvoicePdf = async (format, itemNames, name = "SuperMart") => {
   businessName = name;
   const response = new PassThrough();
@@ -34,6 +55,7 @@ const createInvoicePdf = async (format, itemNames, name = "SuperMart") => {
     createdAt: new Date("2026-01-01T10:00:00Z"),
     items: itemNames.map((productName) => ({
       productName,
+      hsnCode: "1006",
       quantity: 1,
       unitPrice: 10,
       totalPrice: 10,
@@ -83,12 +105,21 @@ const run = async () => {
 
   const rupeePdf = await createInvoicePdf("a4", ["Rice \u20b9 10"]);
   assert(rupeePdf.includes("NotoSansTamil"), "The rupee sign should use an embedded font instead of a text substitution");
+  const a4Text = extractPdfText(rupeePdf);
+  assert(a4Text.includes("1006"), "A4 PDF should include HSN code 1006");
+  assert(a4Text.includes("Amount Chargeable (in words)"), "A4 PDF should include Amount Chargeable (in words)");
+  assert(a4Text.includes("Rupees Ten Only"), "A4 PDF should include amount in words text");
+
   for (const format of ["thermal58", "thermal80"]) {
     const receipt = await createInvoicePdf(format, ["\u0ba4\u0bae\u0bbf\u0bb4\u0bcd \u20b9 10"]);
     assert(receipt.startsWith("%PDF-"));
     assert(receipt.includes("NotoSansTamil"), `${format} should embed the Tamil and rupee font`);
+    const thermalText = extractPdfText(receipt);
+    assert(thermalText.includes("1006"), `${format} should include HSN code 1006`);
+    assert(thermalText.includes("Amount in words"), `${format} should include Amount in words`);
+    assert(thermalText.includes("Rupees Ten Only"), `${format} should include amount in words text`);
   }
-  console.log("Invoice PDF tests passed: rupee symbol and Indian-language fonts render in A4 and thermal formats.");
+  console.log("Invoice PDF tests passed: HSN code, amount-in-words, rupee symbol and Indian-language fonts render in A4 and thermal formats.");
 };
 
 run().catch((error) => {
