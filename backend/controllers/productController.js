@@ -1,6 +1,6 @@
 // controllers/productController.js — inventory (tenant database)
 const { Op, fn, col, literal } = require("sequelize");
-const { asyncHandler, HttpError, num, str, bool, round2, round3, paging } = require("../utils/helpers");
+const { asyncHandler, HttpError, num, str, bool, round2, round3, paging, assertPriceWithinMrp } = require("../utils/helpers");
 const { getPlatformSettings, getShopSettings, planLimits } = require("../utils/settings");
 const { moveStock } = require("../utils/stock");
 
@@ -51,6 +51,9 @@ const productFields = (b, partial = false) => {
   if (has("supplierId")) out.supplierId = b.supplierId ? parseInt(b.supplierId, 10) || null : null;
   if (has("description")) out.description = str(b.description, 5000);
   if (has("isActive") && b.isActive !== undefined) out.isActive = bool(b.isActive);
+  if (out.price !== undefined && out.mrp !== undefined) {
+    assertPriceWithinMrp(out.price, out.mrp, out.name || "Product");
+  }
   return out;
 };
 
@@ -179,6 +182,7 @@ const createProduct = asyncHandler(async (req, res) => {
   const data = productFields(req.body || {});
   if (!data.name) throw new HttpError(400, "Product name is required");
   if (req.body.price === undefined || req.body.price === "") throw new HttpError(400, "Selling price is required");
+  assertPriceWithinMrp(data.price, data.mrp, data.name);
   assertQuantity(req.body.quantity, "Opening stock");
   assertQuantity(req.body.reorderLevel, "Reorder level");
   await assertProductLimit(req);
@@ -209,6 +213,9 @@ const updateProduct = asyncHandler(async (req, res) => {
   assertQuantity(req.body.quantity, "Stock");
   assertQuantity(req.body.reorderLevel, "Reorder level");
   if (data.barcode !== undefined) await assertBarcodeFree(db, data.barcode, product.id);
+  const targetPrice = data.price !== undefined ? data.price : Number(product.price);
+  const targetMrp = data.mrp !== undefined ? data.mrp : product.mrp;
+  assertPriceWithinMrp(targetPrice, targetMrp, data.name || product.name);
 
   const t = await req.tenant.sequelize.transaction();
   try {
@@ -293,6 +300,9 @@ const scanBarcode = asyncHandler(async (req, res) => {
       if (b.costPrice !== undefined && b.costPrice !== "") updates.costPrice = round2(num(b.costPrice));
       if (b.name) updates.name = str(b.name, 180);
       if (b.category !== undefined) updates.category = str(b.category, 80);
+      const targetPrice = updates.price !== undefined ? updates.price : Number(product.price);
+      const targetMrp = updates.mrp !== undefined ? updates.mrp : product.mrp;
+      assertPriceWithinMrp(targetPrice, targetMrp, updates.name || product.name);
       if (Object.keys(updates).length) await product.update(updates, { transaction: t });
       if (quantity > 0) await moveStock(db, product, quantity, { type: "scan", note: "Stock added by scan", userName: req.user.username, transaction: t });
       await t.commit();
@@ -357,9 +367,17 @@ const bulkImport = asyncHandler(async (req, res) => {
   if (list.length > 5000) throw new HttpError(400, "Import at most 5000 rows at a time");
 
   const results = { created: 0, updated: 0, failed: 0, errors: [] };
+  const failedRows = new Set();
+  const addError = (rowNum, message) => {
+    if (failedRows.has(rowNum)) return;
+    failedRows.add(rowNum);
+    results.failed++;
+    if (results.errors.length < 200) results.errors.push(`Row ${rowNum}: ${message}`);
+  };
   const platform = await getPlatformSettings();
   const { maxProducts } = planLimits(platform, req.shop.plan);
   let activeCount = await db.Product.count({ where: { isActive: true } });
+  const rows = [];
 
   for (let i = 0; i < list.length; i++) {
     const row = list[i] || {};
@@ -373,34 +391,144 @@ const bulkImport = asyncHandler(async (req, res) => {
       const data = productFields({ ...row, name }, true);
       delete data.isActive;
       const qtyIn = round3(Math.max(0, num(row.quantity)));
-
-      let existing = null;
-      if (data.barcode) existing = await db.Product.findOne({ where: { barcode: data.barcode } });
-      if (!existing) existing = await db.Product.findOne({ where: { name, isActive: true } });
-
-      const t = await req.tenant.sequelize.transaction();
-      try {
-        if (existing) {
-          if (!existing.isActive && maxProducts && !req.isSuperAdmin && activeCount + 1 > maxProducts) throw new Error("Plan product limit reached");
-          if (!existing.isActive) activeCount += 1;
-          await existing.update({ ...data, isActive: true }, { transaction: t });
-          if (qtyIn > 0) await moveStock(db, existing, qtyIn, { type: "import", note: "Bulk import", userName: req.user.username, transaction: t });
-          results.updated++;
-        } else {
-          if (maxProducts && !req.isSuperAdmin && activeCount + 1 > maxProducts) throw new Error("Plan product limit reached");
-          const product = await db.Product.create({ ...data, quantity: 0, isActive: true }, { transaction: t });
-          if (qtyIn > 0) await moveStock(db, product, qtyIn, { type: "import", note: "Bulk import", userName: req.user.username, transaction: t });
-          activeCount += 1;
-          results.created++;
-        }
-        await t.commit();
-      } catch (err) {
-        await t.rollback();
-        throw err;
-      }
+      rows.push({ rowNum, data, name, qtyIn });
     } catch (err) {
-      results.failed++;
-      if (results.errors.length < 200) results.errors.push(`Row ${rowNum}: ${err.message}`);
+      addError(rowNum, err.message);
+    }
+  }
+
+  const chunkSize = 100;
+  const keyOf = (value) => String(value || "").toLowerCase();
+  for (let start = 0; start < rows.length; start += chunkSize) {
+    const chunk = rows.slice(start, start + chunkSize);
+    const barcodes = [...new Set(chunk.map(({ data }) => data.barcode).filter(Boolean))];
+    const names = [...new Set(chunk.map(({ name }) => name))];
+    const where = [];
+    if (barcodes.length) where.push({ barcode: { [Op.in]: barcodes } });
+    if (names.length) where.push({ name: { [Op.in]: names }, isActive: true });
+
+    let t;
+    const attemptedRows = [];
+    try {
+      t = await req.tenant.sequelize.transaction();
+      const matches = await db.Product.findAll({ where: { [Op.or]: where }, transaction: t });
+      const byBarcode = new Map();
+      const byName = new Map();
+      const indexProduct = (map, key, product, prepend = false) => {
+        if (!key) return;
+        const indexKey = keyOf(key);
+        const products = map.get(indexKey) || [];
+        if (!products.includes(product)) {
+          if (prepend) products.unshift(product);
+          else products.push(product);
+        }
+        map.set(indexKey, products);
+      };
+      const unindexProduct = (map, key, product) => {
+        if (!key) return;
+        const indexKey = keyOf(key);
+        const products = map.get(indexKey);
+        if (!products) return;
+        const index = products.indexOf(product);
+        if (index >= 0) products.splice(index, 1);
+        if (!products.length) map.delete(indexKey);
+      };
+      for (const product of matches) {
+        indexProduct(byBarcode, product.barcode, product);
+        if (product.isActive) indexProduct(byName, product.name, product);
+      }
+
+      let chunkCreated = 0;
+      let chunkUpdated = 0;
+      let chunkActiveCount = activeCount;
+      const existingProducts = new Map();
+      const newProducts = [];
+      const stockMovements = [];
+      for (const { rowNum, data, name, qtyIn } of chunk) {
+        let product = (data.barcode && byBarcode.get(keyOf(data.barcode))?.[0]) || byName.get(keyOf(name))?.[0];
+        const existing = product;
+        if (!existing && maxProducts && !req.isSuperAdmin && chunkActiveCount + 1 > maxProducts) {
+          addError(rowNum, "Plan product limit reached");
+          continue;
+        }
+        if (existing && !existing.isActive && maxProducts && !req.isSuperAdmin && chunkActiveCount + 1 > maxProducts) {
+          addError(rowNum, "Plan product limit reached");
+          continue;
+        }
+
+        attemptedRows.push({ rowNum });
+        if (product) {
+          const targetPrice = data.price !== undefined ? data.price : Number(product.price);
+          const targetMrp = data.mrp !== undefined ? data.mrp : product.mrp;
+          try {
+            assertPriceWithinMrp(targetPrice, targetMrp, name);
+          } catch (err) {
+            addError(rowNum, err.message);
+            continue;
+          }
+          const previousBarcode = existing.barcode;
+          const previousName = existing.name;
+          const wasActive = existing.isActive;
+          product.set({ ...data, isActive: true });
+          if (previousBarcode !== product.barcode) unindexProduct(byBarcode, previousBarcode, product);
+          if (wasActive && previousName !== product.name) unindexProduct(byName, previousName, product);
+          existingProducts.set(product.id, product);
+          if (!wasActive) chunkActiveCount++;
+          chunkUpdated++;
+        } else {
+          product = db.Product.build({ ...data, quantity: 0, isActive: true });
+          newProducts.push(product);
+          chunkActiveCount++;
+          chunkCreated++;
+        }
+        indexProduct(byBarcode, product.barcode, product, true);
+        indexProduct(byName, product.name, product, true);
+        if (qtyIn > 0) {
+          const balanceAfter = round3(Number(product.quantity) + qtyIn);
+          product.quantity = balanceAfter;
+          stockMovements.push({
+            productId: product.id || null,
+            product,
+            productName: product.name,
+            type: "import",
+            quantity: qtyIn,
+            balanceAfter,
+            reference: null,
+            note: "Bulk import",
+            userName: req.user.username,
+          });
+        }
+      }
+      const updateFields = Object.keys(db.Product.rawAttributes).filter((field) => field !== "id" && field !== "createdAt");
+      if (newProducts.length) {
+        const created = await db.Product.bulkCreate(newProducts.map((product) => product.get({ plain: true })), {
+          transaction: t,
+          validate: true,
+        });
+        newProducts.forEach((product, index) => {
+          product.id = created[index].id;
+        });
+      }
+      if (existingProducts.size) {
+        const updatedAt = new Date();
+        await db.Product.bulkCreate(
+          [...existingProducts.values()].map((product) => ({ ...product.get({ plain: true }), updatedAt })),
+          { transaction: t, validate: true, updateOnDuplicate: updateFields },
+        );
+      }
+      if (stockMovements.length) {
+        const movements = stockMovements.map(({ product, ...movement }) => ({ ...movement, productId: product.id }));
+        await db.StockMovement.bulkCreate(movements, { transaction: t });
+      }
+      await t.commit();
+      activeCount = chunkActiveCount;
+      results.created += chunkCreated;
+      results.updated += chunkUpdated;
+    } catch (err) {
+      if (t && !t.finished) await t.rollback();
+      for (const { rowNum } of attemptedRows.length ? attemptedRows : chunk) {
+        addError(rowNum, `Batch failed: ${err.message}`);
+      }
     }
   }
 

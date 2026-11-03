@@ -1,11 +1,90 @@
 // controllers/invoiceController.js — PDF invoice (thermal 58mm / 80mm or A4) from shop settings
 const PDFDocument = require("pdfkit");
+const path = require("path");
 const { asyncHandler, HttpError } = require("../utils/helpers");
 const { getShopSettings } = require("../utils/settings");
 
-// Built-in PDF fonts can't draw "₹" — use "Rs." instead
 const money = (v, sym) => `${sym}${(Number(v) || 0).toFixed(2)}`;
-const pdfSymbol = (s) => (!s || s === "₹" ? "Rs." : s);
+const pdfSymbol = (s) => s || "₹";
+
+const invoiceScriptFonts = [
+  ["arabic", "noto-sans-arabic", "arabic"],
+  ["bengali", "noto-sans-bengali", "bengali"],
+  ["devanagari", "noto-sans-devanagari", "devanagari"],
+  ["gujarati", "noto-sans-gujarati", "gujarati"],
+  ["gurmukhi", "anek-gurmukhi", "gurmukhi"],
+  ["kannada", "noto-sans-kannada", "kannada"],
+  ["malayalam", "noto-sans-malayalam", "malayalam"],
+  ["meetei", "noto-sans-meetei-mayek", "meetei-mayek"],
+  ["oriya", "noto-sans-oriya", "oriya"],
+  ["tamil", "noto-sans-tamil", "tamil"],
+  ["telugu", "noto-sans-telugu", "telugu"],
+];
+
+const scriptForCodePoint = (codePoint) => {
+  if ((codePoint >= 0x0600 && codePoint <= 0x08ff)) return "arabic";
+  if ((codePoint >= 0x0980 && codePoint <= 0x09ff)) return "bengali";
+  if ((codePoint >= 0x0900 && codePoint <= 0x097f) || (codePoint >= 0x1cd0 && codePoint <= 0x1cff) || (codePoint >= 0xa8e0 && codePoint <= 0xa8ff)) return "devanagari";
+  if (codePoint >= 0x0a00 && codePoint <= 0x0a7f) return "gurmukhi";
+  if (codePoint >= 0x0a80 && codePoint <= 0x0aff) return "gujarati";
+  if (codePoint >= 0x0b00 && codePoint <= 0x0b7f) return "oriya";
+  if (codePoint >= 0x0b80 && codePoint <= 0x0bff) return "tamil";
+  if (codePoint >= 0x0c00 && codePoint <= 0x0c7f) return "telugu";
+  if (codePoint >= 0x0c80 && codePoint <= 0x0cff) return "kannada";
+  if (codePoint >= 0x0d00 && codePoint <= 0x0d7f) return "malayalam";
+  if ((codePoint >= 0xabc0 && codePoint <= 0xabff) || (codePoint >= 0xaae0 && codePoint <= 0xaaff)) return "meetei";
+  if (codePoint === 0x20b9) return "tamil";
+  return null;
+};
+
+const registerInvoiceFonts = (doc) => {
+  const fontNames = {};
+  for (const [script, packageName, subset] of invoiceScriptFonts) {
+    fontNames[script] = {};
+    for (const [weight, weightName] of [[400, "Regular"], [700, "Bold"]]) {
+      const name = `Invoice${script}${weightName}`;
+      const file = `${packageName}-${subset}-${weight}-normal.woff`;
+      const fontPath = path.join(__dirname, "..", "node_modules", "@fontsource", packageName, "files", file);
+      doc.registerFont(name, fontPath);
+      fontNames[script][weight] = name;
+    }
+  }
+
+  const text = doc.text.bind(doc);
+  doc.text = function (value, x, y, options) {
+    if (typeof value !== "string") return text(value, x, y, options);
+
+    const bold = /bold/i.test(this._font?.name || "");
+    const weight = bold ? 700 : 400;
+    const runs = [];
+    for (const character of value) {
+      let script = scriptForCodePoint(character.codePointAt(0));
+      if (!script && /[\u200c\u200d]/u.test(character) && runs.length) script = runs[runs.length - 1].script;
+      const font = script ? fontNames[script][weight] : null;
+      const last = runs[runs.length - 1];
+      if (last && last.font === font) last.text += character;
+      else runs.push({ text: character, font, script });
+    }
+    if (!runs.some((run) => run.font)) return text(value, x, y, options);
+
+    const suppliedOptions = typeof x === "object" && x !== null ? x : options || {};
+    const startX = typeof x === "number" ? x : suppliedOptions.x ?? this.x;
+    const drawOptions = { ...suppliedOptions };
+    if (drawOptions.width === undefined && drawOptions.lineBreak !== false) {
+      drawOptions.width = this.page.width - startX - this.page.margins.right;
+    }
+    const originalFont = this._font?.name || "Helvetica";
+    runs.forEach((run, index) => {
+      this.font(run.font || originalFont);
+      const runOptions = index === 0 ? { ...drawOptions } : {};
+      runOptions.continued = index < runs.length - 1 || suppliedOptions.continued === true;
+      if (index === 0) text(run.text, x, y, runOptions);
+      else text(run.text, undefined, undefined, runOptions);
+    });
+    this.font(originalFont);
+    return this;
+  };
+};
 
 const fmtDate = (d, offset) => {
   const x = new Date(new Date(d).getTime() + offset * 60000);
@@ -295,6 +374,7 @@ const generateInvoice = asyncHandler(async (req, res) => {
     doc = new PDFDocument({ size: [width, Math.max(420, height)], margins: { top: 10, bottom: 10, left: 8, right: 8 } });
   }
 
+  registerInvoiceFonts(doc);
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename=invoice-${bill.billNumber}.pdf`);
   doc.pipe(res);

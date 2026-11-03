@@ -285,6 +285,13 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
     const valid = items.filter((i) => num(i.quantity) > 0);
     if (!valid.length) return toast.error("Add products with quantity");
     if (!form.payFull && num(form.paidAmount) < total && !form.supplierId) return toast.error("Select a supplier for an unpaid purchase");
+    if (form.updatePrices) {
+      for (const it of valid) {
+        if (it.mrp && num(it.sellingPrice) > num(it.mrp)) {
+          return toast.error(`Selling price (₹${it.sellingPrice}) cannot exceed MRP (₹${it.mrp}) for "${it.name}"`);
+        }
+      }
+    }
     setSaving(true);
     try {
       const r = await purchaseAPI.create({
