@@ -141,3 +141,5 @@ export const isValidPhone = (val) => {
   }
   return /^\d{11,15}$/.test(p);
 };
+
+export { amountToWords, numberToIndianWords } from "./numberToWords";

@@ -3,6 +3,7 @@ const { Op } = require("sequelize");
 const { User, RefreshToken } = require("../models/master");
 const { asyncHandler, HttpError, str, bool } = require("../utils/helpers");
 const { getPlatformSettings, planLimits } = require("../utils/settings");
+const { logAudit } = require("../utils/auditLogger");
 
 const ROLES = ["owner", "manager", "cashier"];
 
@@ -30,6 +31,19 @@ const createStaff = asyncHandler(async (req, res) => {
   }
 
   const user = await User.create({ shopId: req.shopId, username, email, phone: str(b.phone, 20), password: String(b.password), role });
+
+  await logAudit(req, {
+    action: "STAFF_CREATED",
+    entityType: "user",
+    entityId: user.id,
+    details: { username: user.username, email: user.email, role: user.role },
+    diff: {
+      username: { from: null, to: user.username },
+      email: { from: null, to: user.email },
+      role: { from: null, to: user.role },
+    },
+  });
+
   res.status(201).json({ success: true, message: "Staff account created", data: { user: user.toSafeJSON() } });
 });
 
@@ -39,6 +53,14 @@ const updateStaff = asyncHandler(async (req, res) => {
   const b = req.body || {};
   const isSelf = user.id === req.user.id;
   let securityChanged = false;
+
+  const oldValues = {
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    phone: user.phone,
+    isActive: user.isActive,
+  };
 
   // A shop owner must never be able to take over the platform admin account that
   // happens to live in the same shop (change its email/password/role).
@@ -82,6 +104,25 @@ const updateStaff = asyncHandler(async (req, res) => {
   }
 
   await user.save();
+
+  const staffDiff = {};
+  if (user.username !== oldValues.username) staffDiff.username = { from: oldValues.username, to: user.username };
+  if (user.email !== oldValues.email) staffDiff.email = { from: oldValues.email, to: user.email };
+  if (user.role !== oldValues.role) staffDiff.role = { from: oldValues.role, to: user.role };
+  if (user.phone !== oldValues.phone) staffDiff.phone = { from: oldValues.phone, to: user.phone };
+  if (user.isActive !== oldValues.isActive) staffDiff.isActive = { from: oldValues.isActive, to: user.isActive };
+  if (b.password) staffDiff.password = { from: "[hidden]", to: "[changed]" };
+
+  if (Object.keys(staffDiff).length > 0) {
+    await logAudit(req, {
+      action: "STAFF_UPDATED",
+      entityType: "user",
+      entityId: user.id,
+      details: { username: user.username, email: user.email, role: user.role },
+      diff: staffDiff,
+    });
+  }
+
   res.json({ success: true, message: "Staff updated", data: { user: user.toSafeJSON() } });
 });
 
@@ -96,6 +137,17 @@ const deleteStaff = asyncHandler(async (req, res) => {
   }
   await RefreshToken.destroy({ where: { userId: user.id } });
   await user.destroy();
+
+  await logAudit(req, {
+    action: "STAFF_DELETED",
+    entityType: "user",
+    entityId: user.id,
+    details: { username: user.username, email: user.email, role: user.role },
+    diff: {
+      deleted: { from: false, to: true },
+    },
+  });
+
   res.json({ success: true, message: "Staff removed" });
 });
 

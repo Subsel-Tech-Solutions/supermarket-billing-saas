@@ -1,7 +1,7 @@
 // src/components/dashboard/Reports.jsx — business reports with date range + CSV export
 import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { BarChart3, Package, Layers, Percent, TrendingUp, Users, Clock, Download, IndianRupee, ShoppingBag, Receipt } from "lucide-react";
+import { BarChart3, Package, Layers, Percent, TrendingUp, Users, Clock, Download, IndianRupee, ShoppingBag, Receipt, ShieldCheck } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { reportAPI } from "../../services/api";
 import { formatCurrency, formatQty, formatDate, getErrorMessage, downloadCSV, ymd, PAYMENT_LABELS, currencySymbol } from "../../utils/helpers";
@@ -69,6 +69,7 @@ export default function Reports() {
         staff: () => reportAPI.getStaff(p),
         stock: () => reportAPI.getStockReport(p),
         expiry: () => reportAPI.getExpiry({ days: expiryDays }),
+        audit: () => reportAPI.getAuditLogs({ ...p, limit: 100 }),
       };
       const r = await fetchers[tab]();
       setResult({ tab, data: r.data.data });
@@ -93,6 +94,7 @@ export default function Reports() {
     { value: "staff", label: "Staff", icon: Users },
     { value: "stock", label: "Stock movement", icon: Package },
     { value: "expiry", label: "Expiry", icon: Clock },
+    { value: "audit", label: "Audit Trail", icon: ShieldCheck },
   ];
 
   const exportCSV = () => {
@@ -119,6 +121,19 @@ export default function Reports() {
       ]);
     if (tab === "expiry")
       downloadCSV(name, [["Product", "Barcode", "Batch", "Expiry", "Qty"], ...[...data.expired, ...data.expiring].map((p) => [p.name, p.barcode, p.batchNo, p.expiryDate, p.quantity])]);
+    if (tab === "audit")
+      downloadCSV(name, [
+        ["Date", "Action", "Entity", "ID", "User", "Role", "Details / Diff"],
+        ...(data.logs || []).map((l) => [
+          formatDate(l.createdAt),
+          l.action,
+          l.entityType,
+          l.entityId || "",
+          l.username || "",
+          l.userRole || "",
+          JSON.stringify(l.diff && Object.keys(l.diff).length ? l.diff : l.details || {}),
+        ]),
+      ]);
   };
 
   return (
@@ -556,5 +571,108 @@ function ReportBody({ tab, data }) {
       </>
     );
   }
+  if (tab === "audit") {
+    const logs = data?.logs || [];
+    const priceCount = logs.filter((l) => l.action === "PRICE_CHANGE").length;
+    const billCount = logs.filter((l) => l.action.startsWith("BILL_") || l.action === "DISCOUNT_APPLIED").length;
+    const staffCount = logs.filter((l) => l.action.startsWith("STAFF_") || l.action.startsWith("SETTINGS_")).length;
+
+    const actionTone = (action) => {
+      if (action === "BILL_CANCELLED" || action === "STAFF_DELETED") return "danger";
+      if (action === "BILL_RETURN" || action === "PRICE_CHANGE") return "warning";
+      if (action === "DISCOUNT_APPLIED") return "accent";
+      return "muted";
+    };
+
+    const renderAuditDiff = (log) => {
+      if (log.diff && Object.keys(log.diff).length > 0) {
+        return (
+          <div style={{ fontSize: 12 }}>
+            {Object.entries(log.diff).map(([k, v]) => (
+              <div key={k} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>{k}:</span>
+                <span style={{ textDecoration: v.from !== null && v.from !== undefined ? "line-through" : "none", color: "var(--text-muted)" }}>
+                  {typeof v.from === "object" ? JSON.stringify(v.from) : String(v.from ?? "—")}
+                </span>
+                <span>→</span>
+                <span style={{ fontWeight: 600 }}>
+                  {typeof v.to === "object" ? JSON.stringify(v.to) : String(v.to ?? "—")}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      }
+      if (log.details && Object.keys(log.details).length > 0) {
+        return (
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {Object.entries(log.details)
+              .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`)
+              .join(" · ")}
+          </div>
+        );
+      }
+      return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+    };
+
+    return (
+      <>
+        <div className="grid-stats-sm" style={{ marginBottom: 16 }}>
+          <MiniStat label="Total Audited Events" value={logs.length} />
+          <MiniStat label="Price Changes" value={priceCount} tone="warning" />
+          <MiniStat label="Discounts & Cancellations" value={billCount} tone="danger" />
+          <MiniStat label="Staff & Setting Changes" value={staffCount} tone="accent" />
+        </div>
+        <div className="card" style={{ overflow: "hidden" }}>
+          <Table stack={false}>
+            <thead>
+              <tr>
+                <Th>Timestamp</Th>
+                <Th>Action</Th>
+                <Th>Target Entity</Th>
+                <Th>User</Th>
+                <Th>Details / Changes</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((l) => (
+                <tr key={l.id}>
+                  <Td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{formatDate(l.createdAt)}</Td>
+                  <Td>
+                    <Pill tone={actionTone(l.action)}>{l.action.replace(/_/g, " ")}</Pill>
+                  </Td>
+                  <Td>
+                    <span style={{ fontWeight: 500 }}>{l.entityType}</span>
+                    {l.entityId && (
+                      <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: 6 }}>
+                        #{l.entityId}
+                      </span>
+                    )}
+                  </Td>
+                  <Td>
+                    <span style={{ fontWeight: 500 }}>{l.username || "system"}</span>
+                    {l.userRole && (
+                      <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: 6 }}>
+                        ({l.userRole})
+                      </span>
+                    )}
+                  </Td>
+                  <Td>{renderAuditDiff(l)}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+          {!logs.length && (
+            <EmptyState
+              icon={ShieldCheck}
+              title="No audit events found"
+              description="No price changes, discounts, cancellations, or configuration changes recorded for this date range."
+            />
+          )}
+        </div>
+      </>
+    );
+  }
+
   return null;
 }

@@ -3,6 +3,7 @@ const { Op, fn, col, literal } = require("sequelize");
 const { asyncHandler, HttpError, num, str, bool, round2, round3, paging, assertPriceWithinMrp } = require("../utils/helpers");
 const { getPlatformSettings, getShopSettings, planLimits } = require("../utils/settings");
 const { moveStock } = require("../utils/stock");
+const { logAudit } = require("../utils/auditLogger");
 
 const DECIMAL_UNITS = ["kg", "g", "l", "ml", "mtr"];
 
@@ -217,6 +218,10 @@ const updateProduct = asyncHandler(async (req, res) => {
   const targetMrp = data.mrp !== undefined ? data.mrp : product.mrp;
   assertPriceWithinMrp(targetPrice, targetMrp, data.name || product.name);
 
+  const oldPrice = Number(product.price);
+  const oldMrp = product.mrp !== null && product.mrp !== undefined ? Number(product.mrp) : null;
+  const oldCostPrice = product.costPrice !== null && product.costPrice !== undefined ? Number(product.costPrice) : null;
+
   const t = await req.tenant.sequelize.transaction();
   try {
     await product.update(data, { transaction: t });
@@ -228,6 +233,25 @@ const updateProduct = asyncHandler(async (req, res) => {
       }
     }
     await t.commit();
+    const priceChanged =
+      (data.price !== undefined && round2(num(data.price)) !== round2(oldPrice)) ||
+      (data.mrp !== undefined && (data.mrp === null ? oldMrp !== null : round2(num(data.mrp)) !== round2(oldMrp))) ||
+      (data.costPrice !== undefined && (data.costPrice === null ? oldCostPrice !== null : round2(num(data.costPrice)) !== round2(oldCostPrice)));
+
+    if (priceChanged) {
+      await logAudit(req, {
+        action: "PRICE_CHANGE",
+        entityType: "product",
+        entityId: product.id,
+        details: { productName: product.name, barcode: product.barcode },
+        diff: {
+          price: { from: oldPrice, to: data.price !== undefined ? round2(num(data.price)) : oldPrice },
+          mrp: { from: oldMrp, to: data.mrp !== undefined ? (data.mrp === null ? null : round2(num(data.mrp))) : oldMrp },
+          costPrice: { from: oldCostPrice, to: data.costPrice !== undefined ? (data.costPrice === null ? null : round2(num(data.costPrice))) : oldCostPrice },
+        },
+      });
+    }
+
     res.json({ success: true, message: "Product updated successfully", data: { product } });
   } catch (err) {
     await t.rollback();

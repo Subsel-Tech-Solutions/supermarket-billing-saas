@@ -2,7 +2,7 @@
 const { Op } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const { Shop, User, PlatformSetting, RefreshToken } = require("../models/master");
-const { getTenant, closeTenant, stats: tenantStats } = require("../tenant/tenantManager");
+const { getTenant, closeTenant, dbNameForShop, stats: tenantStats } = require("../tenant/tenantManager");
 const { createDatabaseIfMissing, assertSafeDbName, sequelize: master } = require("../config/database");
 const { asyncHandler, HttpError, str, int, num, bool, round2 } = require("../utils/helpers");
 const { getPlatformSettings, clearPlatformCache } = require("../utils/settings");
@@ -18,14 +18,28 @@ const tenantSummary = async (shop) => {
   if (hit && Date.now() - hit.at < 60000) return hit.value;
   let value = { products: 0, bills: 0, revenue: 0, customers: 0, dbOk: false };
   try {
-    const { models } = await getTenant(shop);
-    const [products, bills, revenue, customers] = await Promise.all([
-      models.Product.count({ where: { isActive: true } }),
-      models.Bill.count({ where: { status: { [Op.ne]: "cancelled" } } }),
-      models.Bill.sum("totalAmount", { where: { status: { [Op.ne]: "cancelled" } } }),
-      models.Customer.count(),
-    ]);
-    value = { products, bills, revenue: Number(revenue) || 0, customers, dbOk: true };
+    const dbName = shop.dbName || dbNameForShop(shop.id);
+    assertSafeDbName(dbName);
+    const [rows] = await master.query(
+      `SELECT
+        (SELECT COUNT(*) FROM \`${dbName}\`.products WHERE is_active = 1) AS products,
+        (SELECT COUNT(*) FROM \`${dbName}\`.bills WHERE status != 'cancelled') AS bills,
+        (SELECT COALESCE(SUM(total_amount), 0) FROM \`${dbName}\`.bills WHERE status != 'cancelled') AS revenue,
+        (SELECT COUNT(*) FROM \`${dbName}\`.customers) AS customers`
+    );
+    if (rows && rows[0]) {
+      value = {
+        products: Number(rows[0].products) || 0,
+        bills: Number(rows[0].bills) || 0,
+        revenue: Number(rows[0].revenue) || 0,
+        customers: Number(rows[0].customers) || 0,
+        dbOk: true,
+      };
+
+
+
+    }
+
   } catch (err) {
     value.error = err.message;
   }

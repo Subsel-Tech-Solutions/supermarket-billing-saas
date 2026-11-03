@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import BarcodeScanner from "../shared/BarcodeScanner";
 import { productAPI, billAPI, customerAPI, openInvoice, newClientRef } from "../../services/api";
-import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol, cleanPhone, isValidPhone } from "../../utils/helpers";
+import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol, cleanPhone, isValidPhone, amountToWords } from "../../utils/helpers";
 import { calculateBill } from "../../utils/billMath";
 import { printReceipt } from "../../utils/receipt";
 import { Spinner, Modal, FormField } from "../shared/UI";
@@ -62,6 +62,7 @@ function CartItem({ item, line, onQty, onDiscount, onRemove, canDiscount }) {
               {formatCurrency(item.price)}
               {item.unit && item.unit !== "pcs" ? `/${item.unit}` : ""}
             </span>
+            {item.hsnCode && <span>· HSN {item.hsnCode}</span>}
             {item.taxRate > 0 && <span>· GST {item.taxRate}%</span>}
             {num(item.discount) > 0 && <span style={{ color: "var(--success)" }}>· −{formatCurrency(item.discount)}</span>}
           </div>
@@ -221,6 +222,7 @@ export default function Billing() {
         return [
           {
             productId: product.id,
+            hsnCode: product.hsnCode || null,
             name: product.name,
             mrp: product.mrp ? num(product.mrp) : null,
             price: num(product.price),
@@ -905,6 +907,7 @@ export default function Billing() {
                 {cart.length} items · {custName || custPhone || "Walk-in customer"}
               </p>
               <p style={{ fontSize: 26, fontWeight: 600, color: "var(--accent-dark)", ...mono }}>{formatCurrency(calc.totalAmount)}</p>
+              <p style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic", marginTop: 2 }}>{amountToWords(calc.totalAmount)}</p>
             </div>
             {(calc.billDiscount > 0 || calc.loyaltyDiscount > 0) && (
               <div style={{ textAlign: "right", fontSize: 12, color: "var(--success)" }}>
@@ -1163,6 +1166,7 @@ export default function Billing() {
             <div className="card-sunken" style={{ padding: "14px 20px", width: "100%" }}>
               <p style={{ ...mono, fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{lastBill.billNumber}</p>
               <p style={{ fontSize: 24, fontWeight: 600, color: "var(--text-primary)", ...mono }}>{formatCurrency(lastBill.totalAmount)}</p>
+              <p style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic", marginTop: 2 }}>{amountToWords(lastBill.totalAmount)}</p>
               <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
                 {PAYMENT_LABELS[lastBill.paymentMethod] || lastBill.paymentMethod}
                 {num(lastBill.changeReturned) > 0 && ` · Change ${formatCurrency(lastBill.changeReturned)}`}

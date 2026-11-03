@@ -1,6 +1,6 @@
 // controllers/reportsController.js — analytics for ONE business (its own database)
 const { Op, QueryTypes, literal } = require("sequelize");
-const { asyncHandler, round2, round3, int } = require("../utils/helpers");
+const { asyncHandler, round2, round3, int, paging, str } = require("../utils/helpers");
 const { getShopSettings } = require("../utils/settings");
 const { todayRange, monthRange, rangeFromStrings, offsetString, localDateString } = require("../utils/dates");
 
@@ -580,6 +580,51 @@ const getExpiryReport = asyncHandler(async (req, res) => {
   });
 });
 
+// ── GET /api/reports/audit-logs ──────────────────────────────────────────────
+const getAuditLogs = asyncHandler(async (req, res) => {
+  const db = req.db;
+  const settings = await getShopSettings(db);
+  const { page, limit, offset } = paging(req.query, 25, 200);
+  const { action, entityType, search, startDate, endDate } = req.query;
+
+  const where = {};
+  if (action) where.action = action;
+  if (entityType) where.entityType = entityType;
+
+  if (startDate || endDate) {
+    const { start, end } = rangeFromStrings(startDate, endDate, settings.timezoneOffsetMinutes);
+    where.createdAt = {};
+    if (start) where.createdAt[Op.gte] = start;
+    if (end) where.createdAt[Op.lte] = end;
+  }
+
+  if (search) {
+    const q = `%${String(search).trim()}%`;
+    where[Op.or] = [
+      { username: { [Op.like]: q } },
+      { entityId: { [Op.like]: q } },
+      { action: { [Op.like]: q } },
+    ];
+  }
+
+  const { count, rows } = await db.AuditLog.findAndCountAll({
+    where,
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
+    limit,
+    offset,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      logs: rows,
+      total: count,
+      page,
+      pages: Math.max(1, Math.ceil(count / limit)),
+    },
+  });
+});
+
 module.exports = {
   getDashboard,
   getSalesReport,
@@ -591,4 +636,5 @@ module.exports = {
   getDayEnd,
   getStockReport,
   getExpiryReport,
+  getAuditLogs,
 };
