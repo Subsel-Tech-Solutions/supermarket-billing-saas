@@ -13,13 +13,25 @@ const netQtyField = (v) => {
   return nq;
 };
 
+// Barcodes must be valid identifiers (alphanumeric, hyphens, dots, underscores, slashes, pluses, percent, spaces)
+// Strictly reject HTML tags, quotes, angles, backticks, or script payloads
+const sanitizeBarcode = (v) => {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (!/^[A-Za-z0-9._\-\/+% ]+$/.test(s)) {
+    throw new HttpError(400, "Barcode contains invalid characters. Only alphanumeric characters, hyphens, dots, underscores, slashes, and spaces are allowed.");
+  }
+  return s.slice(0, 100);
+};
+
 // Normalise incoming product fields. `partial` = only include keys present in body.
 const productFields = (b, partial = false) => {
   const out = {};
   const has = (k) => !partial || b[k] !== undefined;
   if (has("name")) out.name = str(b.name, 180);
-  if (has("barcode")) out.barcode = str(b.barcode, 100);
-  if (has("serialNumber")) out.serialNumber = str(b.serialNumber, 100);
+  if (has("barcode")) out.barcode = sanitizeBarcode(b.barcode);
+  if (has("serialNumber")) out.serialNumber = sanitizeBarcode(b.serialNumber);
   if (has("category")) out.category = str(b.category, 80);
   if (has("brand")) out.brand = str(b.brand, 80);
   if (has("unit")) out.unit = str(b.unit, 12) || "pcs";
@@ -265,7 +277,7 @@ const getMovements = asyncHandler(async (req, res) => {
 const scanBarcode = asyncHandler(async (req, res) => {
   const db = req.db;
   const b = req.body || {};
-  const barcode = str(b.barcode, 100);
+  const barcode = sanitizeBarcode(b.barcode);
   if (!barcode) throw new HttpError(400, "Barcode is required");
   const quantity = round3(Math.max(0, num(b.quantity, 1)));
 
@@ -413,4 +425,6 @@ module.exports = {
   restoreProduct,
   getCategories,
   bulkImport,
+  sanitizeBarcode,
+  productFields,
 };

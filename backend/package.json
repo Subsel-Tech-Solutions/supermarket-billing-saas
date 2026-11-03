@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "migrate:legacy": "node scripts/migrate-legacy.js",
     "cleanup:trials": "node scripts/cleanup-trials.js",
-    "test": "node tests/billMath.test.js && node tests/authSecurity.test.js && node tests/phoneValidation.test.js && node tests/creditSecurity.test.js && node tests/signupSecurity.test.js"
+    "test": "node tests/billMath.test.js && node tests/authSecurity.test.js && node tests/phoneValidation.test.js && node tests/creditSecurity.test.js && node tests/signupSecurity.test.js && node tests/xssSecurity.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
