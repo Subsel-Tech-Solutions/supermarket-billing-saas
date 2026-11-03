@@ -169,6 +169,9 @@ export default function Billing() {
   const [custName, setCustName] = useState(() => meta.custName || "");
   const [lookingUp, setLookingUp] = useState(false);
   const [held, setHeld] = useState([]);
+  const [heldTotal, setHeldTotal] = useState(0);
+  const [heldPage, setHeldPage] = useState(1);
+  const [heldPages, setHeldPages] = useState(1);
   const [heldOpen, setHeldOpen] = useState(false);
   const [heldId, setHeldId] = useState(() => meta.heldId || null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -352,16 +355,20 @@ export default function Billing() {
   };
 
   // ── Held bills ─────────────────────────────────────────────────────────────
-  const loadHeld = useCallback(async () => {
+  const loadHeld = useCallback(async (page = 1) => {
     try {
-      const r = await billAPI.getHeld();
-      setHeld(r.data.data.held);
+      const r = await billAPI.getHeld({ page });
+      const data = r.data.data;
+      setHeld(data.held);
+      setHeldTotal(data.total);
+      setHeldPage(data.page);
+      setHeldPages(data.pages);
     } catch {
       /* ignore */
     }
   }, []);
   useEffect(() => {
-    loadHeld();
+    loadHeld(1);
   }, [loadHeld]);
 
   const holdCurrent = async () => {
@@ -375,7 +382,7 @@ export default function Billing() {
       if (heldId) await billAPI.deleteHeld(heldId).catch(() => {});
       toast.success("Bill put on hold");
       resetSale();
-      loadHeld();
+      loadHeld(1);
     } catch (err) {
       toast.error(getErrorMessage(err));
     }
@@ -589,8 +596,8 @@ export default function Billing() {
                 </span>
               </button>
             )}
-            <button className="btn-ghost" onClick={() => setHeldOpen(true)}>
-              <PlayCircle size={14} /> Held ({held.length})
+            <button className="btn-ghost" onClick={() => { setHeldOpen(true); loadHeld(heldPage); }}>
+              <PlayCircle size={14} /> Held ({heldTotal})
             </button>
             <button
               onClick={() => setShowCamera(!showCamera)}
@@ -1064,10 +1071,12 @@ export default function Billing() {
 
       {/* ── Held bills ── */}
       <Modal isOpen={heldOpen} onClose={() => setHeldOpen(false)} title="Held bills" maxWidth={460}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>Held bills expire automatically after 7 days.</p>
         {held.length === 0 ? (
           <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: 20 }}>No bills on hold</p>
         ) : (
-          held.map((h) => {
+          <>
+          {held.map((h) => {
             const total = (h.cart || []).reduce((s, i) => s + num(i.price) * num(i.quantity) - num(i.discount), 0);
             return (
               <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
@@ -1086,14 +1095,22 @@ export default function Billing() {
                   aria-label="Delete held bill"
                   onClick={async () => {
                     await billAPI.deleteHeld(h.id).catch(() => {});
-                    loadHeld();
+                    loadHeld(heldPage);
                   }}
                 >
                   <X size={13} />
                 </button>
               </div>
             );
-          })
+          })}
+          {heldPages > 1 && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12 }}>
+              <button className="btn-ghost" disabled={heldPage <= 1} onClick={() => loadHeld(heldPage - 1)}>Previous</button>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Page {heldPage} of {heldPages}</span>
+              <button className="btn-ghost" disabled={heldPage >= heldPages} onClick={() => loadHeld(heldPage + 1)}>Next</button>
+            </div>
+          )}
+          </>
         )}
       </Modal>
 

@@ -1,6 +1,7 @@
 // controllers/customerController.js — customers, credit (udhaar) and loyalty
 const { Op } = require("sequelize");
 const { asyncHandler, HttpError, num, str, round2, paging, normalizePhone, isValidPhone } = require("../utils/helpers");
+const { normalizeGstin, isValidGstin } = require("../utils/gst");
 
 const parseCreditLimit = (raw) => {
   if (raw === undefined) return undefined;
@@ -26,12 +27,15 @@ const customerFields = (b, isCashier = false, existingCustomer = null) => {
     creditLimit = parseCreditLimit(b.creditLimit);
   }
 
+  const gstNumber = normalizeGstin(str(b.gstNumber, 20));
+  if (gstNumber && !isValidGstin(gstNumber)) throw new HttpError(400, "Enter a valid 15-character customer GSTIN");
+
   return {
     name: str(b.name, 120) || "Customer",
     phone,
     email: str(b.email, 120),
     address: str(b.address, 1000),
-    gstNumber: str(b.gstNumber, 20),
+    gstNumber: gstNumber || null,
     creditLimit,
     notes: str(b.notes, 2000),
   };

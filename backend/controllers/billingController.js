@@ -5,6 +5,10 @@ const { calculateBill, settlePayments } = require("../utils/billMath");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { rangeFromStrings } = require("../utils/dates");
 const { moveStock } = require("../utils/stock");
+const { normalizeGstin, isValidGstin, stateCodeFromGstin, stateCodeFromName, stateNameFromCode } = require("../utils/gst");
+
+const HELD_BILL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const HELD_BILL_PAGE_SIZE = 50;
 
 const fullBillInclude = (db) => [
   { model: db.BillItem, as: "items" },
@@ -117,14 +121,22 @@ const createBill = asyncHandler(async (req, res) => {
     }
 
     // ── Place of supply (GST) ────────────────────────────────────────────────
-    // Over-the-counter retail is intra-state, so CGST+SGST is the default. A bill
-    // raised against a GSTIN from another state is inter-state and carries IGST.
-    const customerGst = str(body.customerGstNumber, 20) || (customer ? customer.gstNumber : null);
-    const placeOfSupply = str(body.placeOfSupply, 60) || settings.state || null;
-    const homeState = String(settings.state || "").trim().toLowerCase();
-    const interState =
-      body.interState === true ||
-      (!!placeOfSupply && !!homeState && String(placeOfSupply).trim().toLowerCase() !== homeState);
+    // A registered customer's GSTIN provides a validated, machine-readable state
+    // code. The shop's GSTIN is authoritative; the saved state name is a fallback
+    // for older shops that have not entered a GSTIN yet. Client flags and text
+    // place-of-supply values are deliberately ignored.
+    const suppliedCustomerGst = str(body.customerGstNumber, 20);
+    const customerGst = normalizeGstin(suppliedCustomerGst || (customer ? customer.gstNumber : "")) || null;
+    if (customerGst && !isValidGstin(customerGst)) {
+      throw new HttpError(400, "Enter a valid 15-character customer GSTIN");
+    }
+    const customerStateCode = customerGst ? stateCodeFromGstin(customerGst) : null;
+    const homeStateCode = stateCodeFromGstin(settings.gstNumber) || stateCodeFromName(settings.state);
+    if (customerStateCode && !homeStateCode) {
+      throw new HttpError(400, "Set the shop's state or a valid shop GSTIN before billing a GST-registered customer");
+    }
+    const interState = !!(customerStateCode && homeStateCode && customerStateCode !== homeStateCode);
+    const placeOfSupply = stateNameFromCode(customerStateCode || homeStateCode) || settings.state || null;
 
     const calc = calculateBill(lines, {
       billDiscount,
@@ -518,11 +530,23 @@ const getReturns = asyncHandler(async (req, res) => {
 
 // ── Held (parked) bills ──────────────────────────────────────────────────────
 const getHeldBills = asyncHandler(async (req, res) => {
-  const rows = await req.db.HeldBill.findAll({ order: [["createdAt", "DESC"]], limit: 50 });
-  res.json({ success: true, data: { held: rows } });
+  const db = req.db;
+  const cutoff = new Date(Date.now() - HELD_BILL_TTL_MS);
+  await db.HeldBill.destroy({ where: { createdAt: { [Op.lt]: cutoff } } });
+
+  const total = await db.HeldBill.count();
+  const pages = Math.max(1, Math.ceil(total / HELD_BILL_PAGE_SIZE));
+  const page = Math.min(pages, Math.max(1, parseInt(req.query.page, 10) || 1));
+  const rows = await db.HeldBill.findAll({
+    order: [["createdAt", "DESC"]],
+    limit: HELD_BILL_PAGE_SIZE,
+    offset: (page - 1) * HELD_BILL_PAGE_SIZE,
+  });
+  res.json({ success: true, data: { held: rows, total, page, pages, expiresAfterDays: 7 } });
 });
 
 const holdBill = asyncHandler(async (req, res) => {
+  await req.db.HeldBill.destroy({ where: { createdAt: { [Op.lt]: new Date(Date.now() - HELD_BILL_TTL_MS) } } });
   const cart = Array.isArray(req.body?.cart) ? req.body.cart.slice(0, 300) : [];
   if (!cart.length) throw new HttpError(400, "Cart is empty");
   const held = await req.db.HeldBill.create({
