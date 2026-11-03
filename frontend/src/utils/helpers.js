@@ -118,3 +118,26 @@ export const paymentColor = (m) =>
   ({ cash: "var(--success)", card: "var(--info)", upi: "#8a5cc2", credit: "var(--danger)", split: "var(--accent)" })[m] || "var(--text-muted)";
 
 export const ROLE_LABELS = { owner: "Owner", manager: "Manager", cashier: "Cashier" };
+
+export const cleanPhone = (val) => {
+  if (val === undefined || val === null) return "";
+  let digits = String(val).replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("0")) {
+    digits = digits.slice(1);
+  } else if (digits.length === 12 && digits.startsWith("91")) {
+    digits = digits.slice(2);
+  }
+  return digits.slice(0, 15);
+};
+
+export const isValidPhone = (val) => {
+  if (!val) return false;
+  const rawDigits = String(val).replace(/\D/g, "");
+  if (rawDigits.length > 15) return false;
+  const p = cleanPhone(val);
+  if (!p) return false;
+  if (p.length === 10) {
+    return /^[6-9]\d{9}$/.test(p);
+  }
+  return /^\d{11,15}$/.test(p);
+};

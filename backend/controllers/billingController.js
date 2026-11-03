@@ -1,6 +1,6 @@
 // controllers/billingController.js — POS sales, returns, cancellations, held bills
 const { Op } = require("sequelize");
-const { asyncHandler, HttpError, num, str, round2, round3, pad, paging } = require("../utils/helpers");
+const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, normalizePhone, isValidPhone } = require("../utils/helpers");
 const { calculateBill, settlePayments } = require("../utils/billMath");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { rangeFromStrings } = require("../utils/dates");
@@ -67,7 +67,13 @@ const createBill = asyncHandler(async (req, res) => {
 
     // 2) Customer (by id or phone — created automatically when a phone is given)
     let customer = null;
-    const phone = str(body.customerPhone, 20);
+    let phone = null;
+    if (body.customerPhone) {
+      phone = normalizePhone(body.customerPhone);
+      if (!isValidPhone(body.customerPhone)) {
+        throw new HttpError(400, "Enter a valid 10-digit mobile number for the customer");
+      }
+    }
     if (body.customerId) {
       customer = await db.Customer.findByPk(body.customerId, { transaction: t, lock: t.LOCK.UPDATE });
       // A stale customer id (deleted on another till) must not silently become a walk-in
@@ -295,8 +301,14 @@ const getBills = asyncHandler(async (req, res) => {
     if (end) where.createdAt[Op.lte] = end;
   }
   if (search) {
-    const q = `%${String(search).trim()}%`;
-    where[Op.or] = [{ billNumber: { [Op.like]: q } }, { customerName: { [Op.like]: q } }, { customerPhone: { [Op.like]: q } }];
+    const qStr = String(search).trim();
+    const q = `%${qStr}%`;
+    const digitsOnly = normalizePhone(qStr);
+    const orConds = [{ billNumber: { [Op.like]: q } }, { customerName: { [Op.like]: q } }, { customerPhone: { [Op.like]: q } }];
+    if (digitsOnly && digitsOnly !== qStr) {
+      orConds.push({ customerPhone: { [Op.like]: `%${digitsOnly}%` } });
+    }
+    where[Op.or] = orConds;
   }
 
   const { count, rows } = await db.Bill.findAndCountAll({
