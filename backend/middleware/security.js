@@ -1,6 +1,6 @@
 // middleware/security.js — response headers + brute-force protection
-// Deliberately dependency-free: a single-server POS deployment should not need
-// helmet/express-rate-limit just for this.
+const { createHash } = require("crypto");
+const { sequelize } = require("../config/database");
 
 /**
  * Conservative security headers. No CSP by default because the React build uses
@@ -22,20 +22,35 @@ const securityHeaders = (req, res, next) => {
 };
 
 /**
- * Fixed-window rate limiter kept in memory.
- *
- * In-memory means the counters are per process: with several instances behind a load
- * balancer each one keeps its own window, so set the limits per instance. It is enough
- * to stop password guessing against a single-server install, which is the realistic
- * deployment for this app.
+ * Shared fixed-window counters stored in the master database. Hashing keys avoids
+ * persisting client IPs or login email addresses in clear text.
  */
-const buckets = new Map();
+let cleanupTimer;
 
-const sweep = setInterval(() => {
-  const now = Date.now();
-  for (const [key, b] of buckets.entries()) if (b.resetAt <= now) buckets.delete(key);
-}, 60000);
-sweep.unref();
+const ensureRateLimitStore = () =>
+  sequelize.query(
+    `CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+      bucket_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+      hits INT UNSIGNED NOT NULL,
+      reset_at BIGINT UNSIGNED NOT NULL,
+      KEY ix_rate_limit_reset (reset_at)
+    ) ENGINE=InnoDB`,
+  );
+
+const startRateLimitCleanup = () => {
+  if (cleanupTimer) return;
+  cleanupTimer = setInterval(() => {
+    sequelize.query("DELETE FROM rate_limit_buckets WHERE reset_at <= :now", { replacements: { now: Date.now() } }).catch((err) => {
+      console.error("[rate-limit] Failed to remove expired counters:", err.message);
+    });
+  }, 60000);
+  cleanupTimer.unref();
+};
+
+const stopRateLimitCleanup = () => {
+  if (cleanupTimer) clearInterval(cleanupTimer);
+  cleanupTimer = undefined;
+};
 
 const clientKey = (req) => {
   // app.set("trust proxy", …) makes req.ip respect X-Forwarded-For
@@ -51,21 +66,38 @@ const rateLimit = ({ windowMs = 60000, max = 60, message = "Too many requests, p
   if (process.env.DISABLE_RATE_LIMIT === "true") return next();
   const key = `${req.baseUrl}${req.path}:${keyFn ? keyFn(req) : clientKey(req)}`;
   const now = Date.now();
-  let bucket = buckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    bucket = { count: 0, resetAt: now + windowMs };
-    buckets.set(key, bucket);
-  }
-  bucket.count += 1;
-  const remaining = Math.max(0, max - bucket.count);
-  res.setHeader("X-RateLimit-Limit", max);
-  res.setHeader("X-RateLimit-Remaining", remaining);
-  if (bucket.count > max) {
-    const retry = Math.ceil((bucket.resetAt - now) / 1000);
-    res.setHeader("Retry-After", retry);
-    return res.status(429).json({ success: false, message, code: "RATE_LIMITED", retryAfter: retry });
-  }
-  return next();
+  const bucketKey = createHash("sha256").update(key).digest("hex");
+  return sequelize
+    .transaction(async (transaction) => {
+      await sequelize.query(
+        `INSERT INTO rate_limit_buckets (bucket_key, hits, reset_at)
+         VALUES (:key, 1, :newResetAt)
+         ON DUPLICATE KEY UPDATE
+           hits = IF(reset_at <= :now, 1, hits + 1),
+           reset_at = IF(reset_at <= :now, :newResetAt, reset_at)`,
+        { replacements: { key: bucketKey, now, newResetAt: now + windowMs }, transaction },
+      );
+      const [rows] = await sequelize.query(
+        "SELECT hits, reset_at AS resetAt FROM rate_limit_buckets WHERE bucket_key = :key FOR UPDATE",
+        { replacements: { key: bucketKey }, transaction },
+      );
+      const count = Number(rows?.[0]?.hits);
+      const resetAt = Number(rows?.[0]?.resetAt);
+      if (!Number.isFinite(count) || !Number.isFinite(resetAt)) throw new Error("Rate-limit counter was not persisted");
+      return { count, resetAt };
+    })
+    .then(({ count, resetAt }) => {
+      const remaining = Math.max(0, max - count);
+      res.setHeader("X-RateLimit-Limit", max);
+      res.setHeader("X-RateLimit-Remaining", remaining);
+      if (count > max) {
+        const retry = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+        res.setHeader("Retry-After", retry);
+        return res.status(429).json({ success: false, message, code: "RATE_LIMITED", retryAfter: retry });
+      }
+      return next();
+    })
+    .catch(next);
 };
 
 // Password guessing: counted per IP *and* per email so one attacker cannot spread
@@ -96,6 +128,17 @@ const apiLimiter = rateLimit({
   max: parseInt(process.env.API_RATE_LIMIT || "600", 10),
 });
 
-const resetRateLimits = () => buckets.clear();
+const resetRateLimits = () => sequelize.query("DELETE FROM rate_limit_buckets");
 
-module.exports = { securityHeaders, rateLimit, loginLimiter, signupLimiter, passwordResetLimiter, apiLimiter, resetRateLimits };
+module.exports = {
+  securityHeaders,
+  rateLimit,
+  loginLimiter,
+  signupLimiter,
+  passwordResetLimiter,
+  apiLimiter,
+  ensureRateLimitStore,
+  startRateLimitCleanup,
+  stopRateLimitCleanup,
+  resetRateLimits,
+};

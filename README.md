@@ -27,7 +27,8 @@ reprint the last bill when the printer jams.
 every checkout carries an idempotency key so a double click or a retry on a bad connection cannot create two bills
 or sell the stock twice; a short payment is rejected rather than quietly becoming udhaar; an offline banner appears
 the moment the server stops answering; one broken screen never blanks the whole app. Installable as a PWA on the
-counter tablet.
+counter tablet. In production, a Workbox service worker precaches the app shell and static assets; API requests
+remain network-only, so billing and other server-backed actions pause until the connection returns.
 
 **Sales** — history with filters, returns (partial, restock or not, refund / adjust due / store credit), cancellation with reason.
 
@@ -120,7 +121,8 @@ client — the bundled `frontend/nginx.conf` already sets the header correctly.
 
 * `JWT_SECRET` is checked at startup: at least 32 characters, and not the example value in production.
 * Login, sign-up, and password reset are rate limited per IP and email (`LOGIN_RATE_LIMIT`,
-  `SIGNUP_RATE_LIMIT`, `PASSWORD_RESET_RATE_LIMIT`, `API_RATE_LIMIT`). The counters are per process, so set them per instance.
+  `SIGNUP_RATE_LIMIT`, `PASSWORD_RESET_RATE_LIMIT`, `API_RATE_LIMIT`). Counters are stored in the shared master
+  database, so limits are consistent across server instances. Counter keys are hashed and expired rows are cleaned up automatically.
 * The platform-admin account cannot be edited by a shop owner, even when it lives in their shop.
 * `POST /api/admin/shops/:id/login-as` (support access) writes an `[AUDIT]` line to the server log.
 
@@ -150,7 +152,7 @@ backend/
   models/master/            Shop, User, PlatformSetting
   models/tenant/            Product, Supplier, StockMovement, Customer, Bill, BillItem, HeldBill,
                             SaleReturn(+Item), CustomerPayment, Purchase(+Item), SupplierPayment, Setting, Expense
-  middleware/security.js    response headers + per-IP rate limiting (no extra dependencies)
+  middleware/security.js    response headers + hashed shared rate-limit counters in the master DB
   controllers/ routes/      REST API (/api/…)
   utils/billMath.js         bill calculation (shared with the frontend)
   scripts/migrate-legacy.js old single-DB → database-per-business

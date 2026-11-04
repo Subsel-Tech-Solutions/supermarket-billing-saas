@@ -9,7 +9,13 @@ const { createDatabaseIfMissing } = require("./config/database");
 const { sequelize, Shop, User, PlatformSetting, RefreshToken } = require("./models/master");
 const { provisionTenant, dbNameForShop, closeAll, stats } = require("./tenant/tenantManager");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
-const { securityHeaders, apiLimiter } = require("./middleware/security");
+const {
+  securityHeaders,
+  apiLimiter,
+  ensureRateLimitStore,
+  startRateLimitCleanup,
+  stopRateLimitCleanup,
+} = require("./middleware/security");
 const { verifyCsrf } = require("./middleware/csrf");
 const { buildCorsOptions } = require("./utils/corsConfig");
 const { PLATFORM_DEFAULTS, SIGNUP_POLICY_VERSION, migratePlatformSignupPolicy } = require("./utils/defaults");
@@ -206,6 +212,8 @@ const start = async () => {
     await sequelize.authenticate();
     console.log("✅ Master database connected");
     await sequelize.sync(process.env.DB_SYNC_ALTER === "true" ? { alter: true } : {});
+    await ensureRateLimitStore();
+    startRateLimitCleanup();
     // Ensure token_version column exists on users table and refresh_tokens table exists
     const [cols] = await sequelize.query(
       "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'token_version';"
@@ -220,6 +228,7 @@ const start = async () => {
     const shutdown = async (sig) => {
       console.log(`\n${sig} received — closing…`);
       server.close();
+      stopRateLimitCleanup();
       await closeAll();
       await sequelize.close();
       process.exit(0);

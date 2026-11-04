@@ -27,7 +27,7 @@ import { productAPI, billAPI, customerAPI, openInvoice, newClientRef } from "../
 import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol, cleanPhone, isValidPhone, amountToWords } from "../../utils/helpers";
 import { calculateBill } from "../../utils/billMath";
 import { printReceipt } from "../../utils/receipt";
-import { Spinner, Modal, FormField } from "../shared/UI";
+import { Spinner, Modal, FormField, ConfirmDialog } from "../shared/UI";
 import { useSettings } from "../../context/SettingsContext";
 import { useAuth } from "../../context/AuthContext";
 import usePersistentCart from "../../hooks/usePersistentCart";
@@ -178,6 +178,8 @@ export default function Billing() {
   const [heldPage, setHeldPage] = useState(1);
   const [heldPages, setHeldPages] = useState(1);
   const [heldOpen, setHeldOpen] = useState(false);
+  const [heldBillToResume, setHeldBillToResume] = useState(null);
+  const [clearCartConfirm, setClearCartConfirm] = useState(false);
   const [heldId, setHeldId] = useState(() => meta.heldId || null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkout, setCheckout] = useState(emptyCheckout(settings.defaultPaymentMethod || "cash"));
@@ -399,8 +401,7 @@ export default function Billing() {
     }
   };
 
-  const resumeHeld = (h) => {
-    if (cart.length && !window.confirm("Replace the current cart with the held bill?")) return;
+  const applyHeldBill = (h) => {
     setCart(h.cart || []);
     setCustPhone(h.meta?.custPhone || "");
     setCustName(h.meta?.custName || "");
@@ -410,6 +411,13 @@ export default function Billing() {
     setHeldOpen(false);
     // A resumed bill is a different transaction from whatever was in the cart before.
     clientRef.current = newClientRef();
+  };
+  const resumeHeld = (h) => {
+    if (cart.length) {
+      setHeldBillToResume(h);
+      return;
+    }
+    applyHeldBill(h);
   };
 
   // ── Totals (same math as server) ──────────────────────────────────────────
@@ -832,7 +840,7 @@ export default function Billing() {
                   <PauseCircle size={13} /> Hold
                 </button>
                 <button
-                  onClick={() => window.confirm("Clear the cart?") && resetSale()}
+                  onClick={() => setClearCartConfirm(true)}
                   style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
                 >
                   <Trash2 size={12} /> Clear
@@ -1206,6 +1214,27 @@ export default function Billing() {
           </div>
         )}
       </Modal>
+      <ConfirmDialog
+        isOpen={!!heldBillToResume}
+        onClose={() => setHeldBillToResume(null)}
+        onConfirm={() => {
+          const heldBill = heldBillToResume;
+          setHeldBillToResume(null);
+          if (heldBill) applyHeldBill(heldBill);
+        }}
+        title="Replace current cart?"
+        message="This replaces the items in your current cart with the held bill. The current cart will be cleared."
+      />
+      <ConfirmDialog
+        isOpen={clearCartConfirm}
+        onClose={() => setClearCartConfirm(false)}
+        onConfirm={() => {
+          setClearCartConfirm(false);
+          resetSale();
+        }}
+        title="Clear the cart?"
+        message="This removes all items and customer details from the current bill."
+      />
     </div>
   );
 }
