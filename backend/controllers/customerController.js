@@ -179,6 +179,10 @@ const receivePayment = asyncHandler(async (req, res) => {
   const db = req.db;
   const amount = round2(num(req.body?.amount));
   if (!(amount > 0)) throw new HttpError(400, "Enter a valid amount");
+  const disallowed = ["store_credit", "advance"];
+  if (disallowed.includes(String(req.body?.method || "").toLowerCase())) {
+    throw new HttpError(400, "Store credit / advance cannot be used as a payment method");
+  }
   const method = ["cash", "upi", "card", "cheque", "other"].includes(req.body?.method) ? req.body.method : "cash";
 
   const t = await req.tenant.sequelize.transaction();
