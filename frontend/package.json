@@ -19,7 +19,8 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "craco build"
+    "build": "craco build",
+    "test": "craco test --watchAll=false"
   },
   "devDependencies": {
     "@craco/craco": "^7.1.0",

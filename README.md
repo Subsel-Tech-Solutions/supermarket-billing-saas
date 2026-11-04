@@ -21,7 +21,8 @@ loose items by kg/litre · item & bill discounts · GST per product (inclusive o
 inter-state supply, customer GSTIN on the invoice) · round-off ·
 cash / UPI / card / split payment with change calculation · credit (udhaar) sales with credit limit ·
 loyalty points earn & redeem · hold / resume bills · thermal 58mm / 80mm / A4 receipt printing + PDF invoice ·
-reprint the last bill when the printer jams.
+reprint the last bill when the printer jams. Bill, purchase and return numbers use independent tenant-local
+allocators, so checkouts do not lock the shared settings row; a rolled-back checkout may leave an unused number gap.
 
 **Built for a real counter** — the cart survives a refresh, a crash or an expired session (nothing is re-scanned);
 every checkout carries an idempotency key so a double click or a retry on a bad connection cannot create two bills
@@ -68,6 +69,7 @@ npm start                   # creates supermart_master + sm_shop_1 automatically
 cd frontend
 npm install
 npm start                   # http://localhost:3000  (proxies /api to :5000)
+npm test -- --runInBand     # run frontend unit tests once
 ```
 
 Login: `admin@supermarket.com` / password set via `ADMIN_PASSWORD` in `.env`

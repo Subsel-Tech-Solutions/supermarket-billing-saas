@@ -9,6 +9,7 @@
 const { createDatabaseIfMissing, createTenantSequelize } = require("../config/database");
 const defineTenantModels = require("../models/tenant");
 const { mergeSettings } = require("../utils/defaults");
+const { initializeSequenceCounters } = require("../utils/settings");
 
 const PREFIX = (process.env.TENANT_DB_PREFIX || "sm_shop_").replace(/[^a-zA-Z0-9_]/g, "");
 const IDLE_MS = parseInt(process.env.TENANT_IDLE_MINUTES || "10", 10) * 60 * 1000;
@@ -33,6 +34,7 @@ const buildEntry = (dbName, seed = {}) => {
     if (!existing) {
       await models.Setting.create({ id: 1, data: mergeSettings(seed) });
     }
+    await initializeSequenceCounters(models);
     return entry;
   })();
 

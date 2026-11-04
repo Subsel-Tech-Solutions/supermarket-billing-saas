@@ -63,14 +63,15 @@ export default function Staff() {
   };
 
   const isSelf = edit?.id === user?.id;
-  const overUserLimit = limits?.maxUsers > 0 && rows.length > limits.maxUsers;
+  const activeUsers = rows.filter((row) => row.isActive).length;
+  const overUserLimit = limits?.maxUsers > 0 && activeUsers > limits.maxUsers;
   return (
     <Page maxWidth={1080}>
       <SectionHeader
         title="Staff"
-        subtitle={`${rows.length}${limits?.maxUsers ? ` of ${limits.maxUsers}` : ""} user logins for this shop`}
+        subtitle={`${activeUsers}${limits?.maxUsers ? ` of ${limits.maxUsers}` : ""} active user logins for this shop`}
         actions={
-          <button className="btn-primary" onClick={() => open(null)} disabled={limits?.maxUsers && rows.length >= limits.maxUsers}>
+          <button className="btn-primary" onClick={() => open(null)} disabled={limits?.maxUsers && activeUsers >= limits.maxUsers}>
             <Plus size={14} /> Add staff
           </button>
         }
@@ -78,7 +79,7 @@ export default function Staff() {
       {overUserLimit && (
         <div role="status" style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "11px 14px", marginBottom: 16, borderRadius: 8, background: "var(--warning-light, rgba(217, 148, 48, 0.12))", color: "var(--text-secondary)", fontSize: 12.5 }}>
           <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-          <span>This shop is over its plan’s user limit. Existing accounts remain available, but remove {rows.length - limits.maxUsers} user{rows.length - limits.maxUsers === 1 ? "" : "s"} before adding staff.</span>
+          <span>This shop has {activeUsers - limits.maxUsers} more active user{activeUsers - limits.maxUsers === 1 ? "" : "s"} than its plan allows. Existing accounts remain available; deactivate accounts to meet the limit before adding or reactivating staff.</span>
         </div>
       )}
       <div className="grid-stats" style={{ marginBottom: 16 }}>

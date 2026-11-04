@@ -26,8 +26,8 @@ const createStaff = asyncHandler(async (req, res) => {
   if (!req.isSuperAdmin) {
     const platform = await getPlatformSettings();
     const { maxUsers } = planLimits(platform, req.shop.plan);
-    const count = await User.count({ where: { shopId: req.shopId } });
-    if (maxUsers && count >= maxUsers) throw new HttpError(403, `Your plan allows ${maxUsers} users. Upgrade to add more staff.`, "PLAN_LIMIT");
+    const count = await User.count({ where: { shopId: req.shopId, isActive: true } });
+    if (maxUsers && count >= maxUsers) throw new HttpError(403, `Your plan allows ${maxUsers} active users. Deactivate an account or upgrade to add more staff.`, "PLAN_LIMIT");
   }
 
   const user = await User.create({ shopId: req.shopId, username, email, phone: str(b.phone, 20), password: String(b.password), role });
@@ -88,7 +88,18 @@ const updateStaff = asyncHandler(async (req, res) => {
   }
   if (b.isActive !== undefined && bool(b.isActive) !== user.isActive) {
     if (isSelf) throw new HttpError(400, "You cannot deactivate yourself");
-    user.isActive = bool(b.isActive);
+    const nextIsActive = bool(b.isActive);
+    if (nextIsActive && !req.isSuperAdmin) {
+      const platform = await getPlatformSettings();
+      const { maxUsers } = planLimits(platform, req.shop.plan);
+      if (maxUsers) {
+        const activeCount = await User.count({ where: { shopId: req.shopId, isActive: true } });
+        if (activeCount >= maxUsers) {
+          throw new HttpError(403, `Your plan allows ${maxUsers} active users. Deactivate another account or upgrade before reactivating this one.`, "PLAN_LIMIT");
+        }
+      }
+    }
+    user.isActive = nextIsActive;
     securityChanged = true;
   }
   if (b.password) {
