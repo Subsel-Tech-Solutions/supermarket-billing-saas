@@ -1,7 +1,7 @@
 // src/components/business/Staff.jsx — owner creates logins for managers & cashiers
 import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { UserCog, Plus, Edit2, Trash2 } from "lucide-react";
+import { UserCog, Plus, Edit2, Trash2, AlertTriangle } from "lucide-react";
 import { staffAPI } from "../../services/api";
 import { formatDateTime, getErrorMessage, ROLE_LABELS } from "../../utils/helpers";
 import { useAuth } from "../../context/AuthContext";
@@ -63,6 +63,7 @@ export default function Staff() {
   };
 
   const isSelf = edit?.id === user?.id;
+  const overUserLimit = limits?.maxUsers > 0 && rows.length > limits.maxUsers;
   return (
     <Page maxWidth={1080}>
       <SectionHeader
@@ -74,6 +75,12 @@ export default function Staff() {
           </button>
         }
       />
+      {overUserLimit && (
+        <div role="status" style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "11px 14px", marginBottom: 16, borderRadius: 8, background: "var(--warning-light, rgba(217, 148, 48, 0.12))", color: "var(--text-secondary)", fontSize: 12.5 }}>
+          <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>This shop is over its plan’s user limit. Existing accounts remain available, but remove {rows.length - limits.maxUsers} user{rows.length - limits.maxUsers === 1 ? "" : "s"} before adding staff.</span>
+        </div>
+      )}
       <div className="grid-stats" style={{ marginBottom: 16 }}>
         {Object.entries(PERMS).map(([r, d]) => (
           <div key={r} className="card" style={{ padding: "12px 16px" }}>

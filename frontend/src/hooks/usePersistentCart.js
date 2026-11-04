@@ -1,43 +1,9 @@
 // src/hooks/usePersistentCart.js
-// A half-built bill must survive a refresh, an accidental tab close, a crash, or a token
-// expiry. Without this the cashier has to re-scan a 30-item trolley, which is the single
-// most common complaint about browser-based tills.
+// A half-built bill must survive a refresh, an accidental tab close, a crash, or an
+// access-token refresh. A fully ended session clears the cart.
 import { useCallback, useEffect, useRef, useState } from "react";
-
-const KEY = "pos.cart";
-// A cart older than this is almost certainly abandoned, not interrupted.
-const MAX_AGE_MS = 12 * 60 * 60 * 1000;
-
-const read = () => {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (!raw || !Array.isArray(raw.cart)) return null;
-    if (raw.savedAt && Date.now() - raw.savedAt > MAX_AGE_MS) {
-      localStorage.removeItem(KEY);
-      return null;
-    }
-    return raw;
-  } catch {
-    // Private mode, blocked site data, or a corrupted value — start clean.
-    return null;
-  }
-};
-
-const write = (value) => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ ...value, savedAt: Date.now() }));
-  } catch {
-    /* quota or blocked storage — billing must keep working regardless */
-  }
-};
-
-const clearStored = () => {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {
-    /* ignore */
-  }
-};
+import { useAuth } from "../context/AuthContext";
+import { cartOwnerKey, clearPersistedCart, persistedCartKey, readPersistedCart, writePersistedCart } from "../utils/persistentCart";
 
 /**
  * Cart state that mirrors itself into localStorage.
@@ -49,22 +15,40 @@ const clearStored = () => {
  * }}
  */
 export default function usePersistentCart() {
-  const initial = useRef(read());
-  const [cart, setCart] = useState(() => initial.current?.cart || []);
-  const [meta, setMeta] = useState(() => initial.current?.meta || {});
+  const { user, shop } = useAuth();
+  const owner = cartOwnerKey(user, shop);
+  const [initial] = useState(() => readPersistedCart(owner));
+  const [cart, setCart] = useState(() => initial?.cart || []);
+  const [meta, setMeta] = useState(() => initial?.meta || {});
   // True only on the first mount after an interrupted sale, so the UI can say so once.
-  const [restored, setRestored] = useState(() => (initial.current?.cart?.length || 0) > 0);
+  const [restored, setRestored] = useState(() => (initial?.cart?.length || 0) > 0);
+  const [stateOwner, setStateOwner] = useState(owner);
+  const ownerRef = useRef(owner);
 
   useEffect(() => {
-    if (cart.length === 0 && !Object.keys(meta).length) clearStored();
-    else write({ cart, meta });
-  }, [cart, meta]);
+    if (ownerRef.current === owner) return;
+    clearPersistedCart(ownerRef.current);
+    const next = readPersistedCart(owner);
+    ownerRef.current = owner;
+    setStateOwner(owner);
+    setCart(next?.cart || []);
+    setMeta(next?.meta || {});
+    setRestored((next?.cart?.length || 0) > 0);
+  }, [owner]);
+
+  useEffect(() => {
+    if (stateOwner !== owner) return;
+    if (cart.length === 0 && !Object.keys(meta).length) {
+      if (owner) clearPersistedCart(owner);
+    }
+    else writePersistedCart(owner, { cart, meta });
+  }, [cart, meta, owner, stateOwner]);
 
   // Another tab on the same till finishing a sale should empty this one too, so two
   // windows cannot sell the same trolley twice.
   useEffect(() => {
     const onStorage = (e) => {
-      if (e.key !== KEY) return;
+      if (e.key !== persistedCartKey(owner) && e.key !== "pos.cart") return;
       if (e.newValue === null) {
         setCart([]);
         setMeta({});
@@ -72,9 +56,12 @@ export default function usePersistentCart() {
       }
       try {
         const next = JSON.parse(e.newValue);
-        if (Array.isArray(next?.cart)) {
+        if (next?.owner === owner && Array.isArray(next?.cart)) {
           setCart(next.cart);
           setMeta(next.meta || {});
+        } else {
+          setCart([]);
+          setMeta({});
         }
       } catch {
         /* ignore */
@@ -82,7 +69,7 @@ export default function usePersistentCart() {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [owner]);
 
   // Warn before closing the tab with items in the cart.
   useEffect(() => {
@@ -100,8 +87,8 @@ export default function usePersistentCart() {
     setCart([]);
     setMeta({});
     setRestored(false);
-    clearStored();
-  }, []);
+    if (owner) clearPersistedCart(owner);
+  }, [owner]);
 
   const dismissRestored = useCallback(() => setRestored(false), []);
 

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { productAPI, reportAPI, supplierAPI } from "../../services/api";
 import { formatCurrency, formatQty, formatDateTime, getErrorMessage, debounce, num, getStockBadge, numericOnly, blockNonNumericKeys, escapeHtml } from "../../utils/helpers";
 import { useSettings } from "../../context/SettingsContext";
+import { useAuth } from "../../context/AuthContext";
 import {
   Spinner,
   Modal,
@@ -1525,6 +1526,7 @@ function ReportModal({ isOpen, onClose, onDownload }) {
 
 export default function Stock() {
   const { settings } = useSettings();
+  const { shop } = useAuth();
   const [status, setStatus] = useState("");
   const [summary, setSummary] = useState(null);
   const [adjustTarget, setAdjustTarget] = useState(null);
@@ -1544,6 +1546,8 @@ export default function Stock() {
   const [deleting, setDeleting] = useState(false);
   const [printMode, setPrintMode] = useState(false);
   const [printSelections, setPrintSelections] = useState({}); // { productId: copies }
+  const productLimit = shop?.limits?.maxProducts || 0;
+  const overProductLimit = productLimit > 0 && summary?.count > productLimit;
 
   const bumpCopies = (id, delta) =>
     setPrintSelections((prev) => {
@@ -1934,6 +1938,8 @@ export default function Stock() {
                     setProductModal(true);
                   }}
                   className="btn-primary"
+                  disabled={overProductLimit || (productLimit > 0 && summary?.count >= productLimit)}
+                  title={overProductLimit ? "Remove active products to meet your plan limit before adding more" : undefined}
                 >
                   <Plus size={14} /> Add Product
                 </button>
@@ -1942,6 +1948,13 @@ export default function Stock() {
           </>
         }
       />
+
+      {overProductLimit && (
+        <div role="status" style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "11px 14px", marginBottom: 16, borderRadius: 8, background: "var(--warning-light, rgba(217, 148, 48, 0.12))", color: "var(--text-secondary)", fontSize: 12.5 }}>
+          <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>This shop has {summary.count - productLimit} more active products than its plan allows. Existing products are kept, but adding or restoring products is blocked until the count is within the limit. Remove active products to make room.</span>
+        </div>
+      )}
 
       {summary && (
         <div className="grid-stats-sm" style={{ marginBottom: 16 }}>

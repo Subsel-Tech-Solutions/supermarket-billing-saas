@@ -160,8 +160,8 @@ export default function Billing() {
     (m) => m !== "credit" || settings.allowCreditSale,
   );
 
-  // The cart lives in localStorage, so a refresh, a crash, an expired session or an
-  // accidentally closed tab does not mean re-scanning the whole trolley.
+  // The cart lives in localStorage, so refreshes, crashes, token refreshes and accidental tab
+  // closes do not mean re-scanning the whole trolley.
   const { cart, setCart, meta, setMeta, restored, clearCart, dismissRestored } = usePersistentCart();
   const { online, recheck, isChecking } = useOnline();
   const [searchQuery, setSearchQuery] = useState("");

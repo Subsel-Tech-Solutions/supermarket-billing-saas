@@ -2,6 +2,7 @@
 // Without this, one bad render anywhere in the tree blanks the whole till mid-sale and the
 // cashier has no way back except closing the browser. Here they get the cart back instead.
 import React from "react";
+import { cartOwnerKey, persistedCartKey } from "../../utils/persistentCart";
 
 const box = {
   minHeight: "100dvh",
@@ -36,8 +37,11 @@ export default class ErrorBoundary extends React.Component {
 
     const held = (() => {
       try {
-        const raw = JSON.parse(localStorage.getItem("pos.cart") || "null");
-        return Array.isArray(raw?.cart) ? raw.cart.length : 0;
+        const user = JSON.parse(localStorage.getItem("user") || "null");
+        const shop = JSON.parse(localStorage.getItem("shop") || "null");
+        const owner = cartOwnerKey(user, shop);
+        const raw = JSON.parse(localStorage.getItem(persistedCartKey(owner)) || "null");
+        return raw?.owner === owner && Array.isArray(raw?.cart) ? raw.cart.length : 0;
       } catch {
         return 0;
       }
