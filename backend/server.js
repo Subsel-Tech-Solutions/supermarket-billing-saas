@@ -1,5 +1,12 @@
 // server.js — SuperMart POS SaaS API
-require("dotenv").config();
+const _path = require("path");
+const _fs = require("fs");
+const _e2eEnvPath = _path.resolve(__dirname, ".env.e2e.local");
+if (process.env.E2E_MODE === "true" && _fs.existsSync(_e2eEnvPath)) {
+  require("dotenv").config({ path: _e2eEnvPath, override: true });
+} else {
+  require("dotenv").config();
+}
 const express = require("express");
 const cors = require("cors");
 const path = require("path");

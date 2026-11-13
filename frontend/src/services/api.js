@@ -39,6 +39,11 @@ const processQueue = (error) => {
   failedQueue = [];
 };
 
+const isPublicAuthRoute = () =>
+  ["/login", "/signup", "/forgot-password", "/reset-password"].some((p) =>
+    window.location.pathname.startsWith(p),
+  );
+
 api.interceptors.response.use(
   (res) => {
     // Any successful response proves the server is reachable again.
@@ -81,7 +86,7 @@ api.interceptors.response.use(
           // Purge session cache while preserving counter cart & local theme
           ["user", "shop", "isImpersonating", "token", "adminToken"].forEach((k) => localStorage.removeItem(k));
           window.dispatchEvent(new CustomEvent("auth-unauthorized"));
-          if (!window.location.pathname.startsWith("/login")) {
+          if (!isPublicAuthRoute()) {
             window.location.href = "/login";
           }
           return Promise.reject(refreshErr);
@@ -92,7 +97,7 @@ api.interceptors.response.use(
         if (url.includes("/auth/refresh")) {
           ["user", "shop", "isImpersonating", "token", "adminToken"].forEach((k) => localStorage.removeItem(k));
           window.dispatchEvent(new CustomEvent("auth-unauthorized"));
-          if (!window.location.pathname.startsWith("/login")) {
+          if (!isPublicAuthRoute()) {
             window.location.href = "/login";
           }
         }
