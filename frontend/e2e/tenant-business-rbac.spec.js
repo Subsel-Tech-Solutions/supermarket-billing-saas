@@ -106,12 +106,14 @@ test.describe("Tenant Expenses, Staff, Reports, Settings, Banners & RBAC", () =>
     await page.locator("nav").getByRole("link", { name: "Settings" }).click();
     await expect(page).toHaveURL(/\/settings$/);
 
-    await fieldControl(page, "Business name").fill("FreshMart Flagship");
     await page.getByRole("tab", { name: "Appearance" }).click();
     await page.getByRole("button", { name: "Dark" }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.getByRole("button", { name: "Discard" }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+
+    await page.getByRole("tab", { name: "Business" }).click();
+    await fieldControl(page, "Business name").fill("FreshMart Flagship");
 
     await page.getByRole("tab", { name: "Billing & Tax" }).click();
     await toggleSwitch(page, "Cashiers can cancel bills").click();

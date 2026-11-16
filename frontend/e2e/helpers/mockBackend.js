@@ -1182,7 +1182,7 @@ async function installMockApi(page, state = createMockState()) {
       if (u.role !== "owner" && !u.isSuperAdmin) return fail(403, "Owners only");
       const users = state.users.filter((x) => x.shopId === shop.id).map((x) => ({ ...buildLoginUser(x), createdAt: x.createdAt }));
       const maxUsers = state.platform.plans[shop.plan]?.maxUsers || 10;
-      return ok({ users, limit: maxUsers });
+      return ok({ staff: users, users, limits: { maxUsers }, limit: maxUsers });
     }
     if (path === "/staff" && method === "POST") {
       if (!requireWriteSubscription()) return;

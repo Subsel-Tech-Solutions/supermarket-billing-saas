@@ -639,7 +639,7 @@ function ReportBody({ tab, data }) {
                 <tr key={l.id}>
                   <Td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{formatDate(l.createdAt)}</Td>
                   <Td>
-                    <Pill tone={actionTone(l.action)}>{l.action.replace(/_/g, " ")}</Pill>
+                    <Pill tone={actionTone(l.action)}>{(l.action || "").replace(/_/g, " ")}</Pill>
                   </Td>
                   <Td>
                     <span style={{ fontWeight: 500 }}>{l.entityType}</span>
