@@ -856,6 +856,9 @@ function ShopModal({ shopId, onClose, onChanged, plans }) {
 
   const s = data?.shop;
   const own = s && myShop && s.id === myShop.id;
+  const selectedPlan = plans?.[form.plan];
+  const overUserLimit = selectedPlan?.maxUsers > 0 && data.users.length > selectedPlan.maxUsers;
+  const overProductLimit = selectedPlan?.maxProducts > 0 && s?.products > selectedPlan.maxProducts;
   return (
     <Modal isOpen={!!shopId} onClose={onClose} title={s ? s.name : "Business"} maxWidth={720}>
       {!data ? (
@@ -895,6 +898,16 @@ function ShopModal({ shopId, onClose, onChanged, plans }) {
               <textarea className="input-field" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Payment received, contact person…" />
             </Field>
           </Grid>
+          {(overUserLimit || overProductLimit) && (
+            <div role="status" style={{ padding: "11px 14px", borderRadius: 8, background: "var(--warning-light, rgba(217, 148, 48, 0.12))", color: "var(--text-primary)", fontSize: 12.5 }}>
+              <strong>Selected plan is below current usage.</strong> Existing records will be kept. This shop will need to remove{" "}
+              {[
+                overUserLimit && `${data.users.length - selectedPlan.maxUsers} user${data.users.length - selectedPlan.maxUsers === 1 ? "" : "s"}`,
+                overProductLimit && `${s.products - selectedPlan.maxProducts} product${s.products - selectedPlan.maxProducts === 1 ? "" : "s"}`,
+              ].filter(Boolean).join(" and ")}{" "}
+              before it can add users/products or restore archived products.
+            </div>
+          )}
           {!own && <Toggle label="Business is active" description="Inactive businesses cannot log in" checked={!!form.isActive} onChange={(v) => setForm({ ...form, isActive: v })} />}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="btn-primary" onClick={save} disabled={busy === "save"}>
@@ -1130,6 +1143,11 @@ function PlatformSettings({ only = "settings" }) {
           </tbody>
         </Table>,
         "0 = unlimited",
+      )}
+      {showSelling && (
+        <p style={{ fontSize: 12.5, color: "var(--text-secondary)", margin: "-4px 0 16px" }}>
+          Lowering a plan limit takes effect immediately for every shop on that plan. Existing users and products are kept; over-limit shops cannot add users/products or restore archived products until they are within the new limits.
+        </p>
       )}
       <button className="btn-primary" onClick={save} disabled={saving}>
         {saving ? <Spinner size={13} color="var(--bg)" /> : <Save size={14} />} Save platform settings

@@ -1,6 +1,6 @@
 // tests/mrpCompliance.test.js — test selling price <= MRP compliance across catalog, purchases, and billing
 const assert = require("assert");
-const { assertPriceWithinMrp, HttpError, round2 } = require("../utils/helpers");
+const { assertPriceWithinMrp, assertExpectedProductPrice, HttpError, round2 } = require("../utils/helpers");
 const { productFields } = require("../controllers/productController");
 
 console.log("Starting Selling Price <= MRP Compliance Test Suite...\n");
@@ -54,6 +54,25 @@ test("Rejects fractional overcharges above MRP", () => {
   assert.throws(
     () => assertPriceWithinMrp(50.5, 50, "Snack Bar"),
     (err) => err instanceof HttpError && err.code === "PRICE_EXCEEDS_MRP",
+  );
+});
+
+test("Accepts checkout when the displayed and current selling prices match", () => {
+  assert.doesNotThrow(() => assertExpectedProductPrice(49.99, "49.99", "Soap"));
+  assert.doesNotThrow(() => assertExpectedProductPrice(undefined, 55, "Soap"));
+});
+
+test("Rejects checkout when the selling price changed after it was displayed", () => {
+  assert.throws(
+    () => assertExpectedProductPrice(49.99, 55, "Soap"),
+    (err) => err instanceof HttpError && err.statusCode === 409 && err.code === "PRICE_CHANGED",
+  );
+});
+
+test("Rejects invalid expected selling prices", () => {
+  assert.throws(
+    () => assertExpectedProductPrice("invalid", 55, "Soap"),
+    (err) => err instanceof HttpError && err.statusCode === 400 && err.code === "INVALID_PRICE",
   );
 });
 

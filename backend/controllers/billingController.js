@@ -1,6 +1,6 @@
 // controllers/billingController.js — POS sales, returns, cancellations, held bills
 const { Op } = require("sequelize");
-const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, normalizePhone, isValidPhone, assertPriceWithinMrp } = require("../utils/helpers");
+const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, normalizePhone, isValidPhone, assertPriceWithinMrp, assertExpectedProductPrice } = require("../utils/helpers");
 const { calculateBill, settlePayments, assertCashRefundWithinCollected } = require("../utils/billMath");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { rangeFromStrings } = require("../utils/dates");
@@ -45,7 +45,23 @@ const createBill = asyncHandler(async (req, res) => {
     const q = round3(num(it.quantity));
     if (!id || !(q > 0)) throw new HttpError(400, "Each item needs a product and a quantity above zero");
     const prev = merged.get(id);
-    merged.set(id, { productId: id, quantity: round3((prev?.quantity || 0) + q), discount: round2((prev?.discount || 0) + num(it.discount)) });
+    const expectedPrice = it.expectedPrice === undefined ? undefined : Number(it.expectedPrice);
+    if (expectedPrice !== undefined && (!Number.isFinite(expectedPrice) || expectedPrice < 0)) {
+      throw new HttpError(400, "Expected product price must be a non-negative number", "INVALID_PRICE");
+    }
+    if (
+      prev?.expectedPrice !== undefined &&
+      expectedPrice !== undefined &&
+      round2(prev.expectedPrice) !== round2(expectedPrice)
+    ) {
+      throw new HttpError(400, "Duplicate product lines have conflicting expected prices");
+    }
+    merged.set(id, {
+      productId: id,
+      quantity: round3((prev?.quantity || 0) + q),
+      discount: round2((prev?.discount || 0) + num(it.discount)),
+      expectedPrice: prev?.expectedPrice ?? expectedPrice,
+    });
   });
 
   const anyItemDiscount = [...merged.values()].some((i) => i.discount > 0);
@@ -67,6 +83,7 @@ const createBill = asyncHandler(async (req, res) => {
       if (!settings.allowNegativeStock && Number(product.quantity) < item.quantity) {
         throw new HttpError(400, `Insufficient stock for "${product.name}". Available: ${Number(product.quantity)}`);
       }
+      assertExpectedProductPrice(item.expectedPrice, product.price, product.name);
       products.push({ product, item });
     }
 
@@ -344,8 +361,15 @@ const previewBill = asyncHandler(async (req, res) => {
     taxEnabled: settings.taxEnabled,
     roundOff: settings.roundOff,
   });
+  const prices = products.map((product) => ({
+    productId: product.id,
+    price: Number(product.price),
+    taxRate: Number(product.taxRate) || 0,
+  }));
+  const foundIds = new Set(products.map((product) => product.id));
+  const unavailableProductIds = [...new Set(ids)].filter((id) => !foundIds.has(id));
   delete calc.lines;
-  res.json({ success: true, data: calc });
+  res.json({ success: true, data: { ...calc, prices, unavailableProductIds } });
 });
 
 // ── GET /api/bills ────────────────────────────────────────────────────────────

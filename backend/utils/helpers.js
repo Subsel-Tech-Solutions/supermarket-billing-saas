@@ -94,6 +94,18 @@ const assertPriceWithinMrp = (price, mrp, productName = "Product") => {
   }
 };
 
+const assertExpectedProductPrice = (expectedPrice, actualPrice, productName = "Product") => {
+  if (expectedPrice === undefined) return;
+  const expected = Number(expectedPrice);
+  const actual = Number(actualPrice);
+  if (!Number.isFinite(expected) || expected < 0) {
+    throw new HttpError(400, "Expected product price must be a non-negative number", "INVALID_PRICE");
+  }
+  if (!Number.isFinite(actual) || round2(expected) !== round2(actual)) {
+    throw new HttpError(409, `Selling price for "${productName}" changed. Review the updated price before confirming the bill.`, "PRICE_CHANGED");
+  }
+};
+
 module.exports = {
   asyncHandler,
   HttpError,
@@ -108,6 +120,7 @@ module.exports = {
   isValidPhone,
   paging,
   assertPriceWithinMrp,
+  assertExpectedProductPrice,
   amountToWords,
   numberToIndianWords,
 };

@@ -13,11 +13,9 @@ root.render(
   </React.StrictMode>
 );
 
-// If you want your app to work offline and load faster, you can change
-// unregister() to register() below. Note this comes with some pitfalls.
-// Learn more about service workers: https://cra.link/PWA
+// Register the production service worker for precaching and offline app-shell access.
 serviceWorkerRegistration.register({
-  onUpdate: (registration) => {
+  onUpdate: (event) => {
     toast((t) => (
       <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span>A new version of SuperMart is ready!</span>
@@ -25,18 +23,13 @@ serviceWorkerRegistration.register({
           className="btn-primary"
           style={{ padding: "4px 10px", fontSize: 12 }}
           onClick={() => {
-            if (registration?.waiting) {
-              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-            }
-            window.location.reload();
+            navigator.serviceWorker.addEventListener("controllerchange", () => window.location.reload(), { once: true });
+            event.sw.postMessage({ type: "SKIP_WAITING" });
           }}
         >
           Update
         </button>
       </span>
     ), { duration: 10000, id: 'sw-update' });
-  },
-  onSuccess: () => {
-    console.log('SuperMart POS app shell is cached for offline availability.');
   },
 });

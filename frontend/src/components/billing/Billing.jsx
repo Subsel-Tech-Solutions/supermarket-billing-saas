@@ -27,11 +27,12 @@ import { productAPI, billAPI, customerAPI, openInvoice, newClientRef } from "../
 import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol, cleanPhone, isValidPhone, amountToWords } from "../../utils/helpers";
 import { calculateBill } from "../../utils/billMath";
 import { printReceipt } from "../../utils/receipt";
-import { Spinner, Modal, FormField } from "../shared/UI";
+import { Spinner, Modal, ConfirmDialog } from "../shared/UI";
 import { useSettings } from "../../context/SettingsContext";
 import { useAuth } from "../../context/AuthContext";
 import usePersistentCart from "../../hooks/usePersistentCart";
 import useOnline from "../../hooks/useOnline";
+import CheckoutModal from "./CheckoutModal";
 
 const mono = { fontFamily: "JetBrains Mono, monospace" };
 const qtyBtn = {
@@ -160,8 +161,8 @@ export default function Billing() {
     (m) => m !== "credit" || settings.allowCreditSale,
   );
 
-  // The cart lives in localStorage, so a refresh, a crash, an expired session or an
-  // accidentally closed tab does not mean re-scanning the whole trolley.
+  // The cart lives in localStorage, so refreshes, crashes, token refreshes and accidental tab
+  // closes do not mean re-scanning the whole trolley.
   const { cart, setCart, meta, setMeta, restored, clearCart, dismissRestored } = usePersistentCart();
   const { online, recheck, isChecking } = useOnline();
   const [searchQuery, setSearchQuery] = useState("");
@@ -178,9 +179,12 @@ export default function Billing() {
   const [heldPage, setHeldPage] = useState(1);
   const [heldPages, setHeldPages] = useState(1);
   const [heldOpen, setHeldOpen] = useState(false);
+  const [heldBillToResume, setHeldBillToResume] = useState(null);
+  const [clearCartConfirm, setClearCartConfirm] = useState(false);
   const [heldId, setHeldId] = useState(() => meta.heldId || null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkout, setCheckout] = useState(emptyCheckout(settings.defaultPaymentMethod || "cash"));
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [lastBill, setLastBill] = useState(null);
   // Mobile: the cart is a sheet that slides up rather than a permanently docked panel.
@@ -399,8 +403,7 @@ export default function Billing() {
     }
   };
 
-  const resumeHeld = (h) => {
-    if (cart.length && !window.confirm("Replace the current cart with the held bill?")) return;
+  const applyHeldBill = (h) => {
     setCart(h.cart || []);
     setCustPhone(h.meta?.custPhone || "");
     setCustName(h.meta?.custName || "");
@@ -410,6 +413,13 @@ export default function Billing() {
     setHeldOpen(false);
     // A resumed bill is a different transaction from whatever was in the cart before.
     clientRef.current = newClientRef();
+  };
+  const resumeHeld = (h) => {
+    if (cart.length) {
+      setHeldBillToResume(h);
+      return;
+    }
+    applyHeldBill(h);
   };
 
   // ── Totals (same math as server) ──────────────────────────────────────────
@@ -433,6 +443,43 @@ export default function Billing() {
   );
   const lineFor = (productId) => calc.lines.find((l) => l.productId === productId);
   const totalQty = cart.reduce((s, i) => s + i.quantity, 0);
+
+  const refreshCartPrices = async () => {
+    const response = await billAPI.preview({
+      items: cart.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        discount: num(item.discount),
+      })),
+    });
+    const { prices, unavailableProductIds = [] } = response.data.data;
+    if (!Array.isArray(prices)) throw new Error("The server did not return current product prices");
+    if (unavailableProductIds.length) {
+      toast.error("Some products are no longer available. Remove them before billing.");
+      return false;
+    }
+
+    const latestById = new Map(prices.map((item) => [Number(item.productId), item]));
+    if (cart.some((item) => !latestById.has(Number(item.productId)))) {
+      toast.error("Could not verify every product price. Please refresh the cart and try again.");
+      return false;
+    }
+
+    const changed = cart.some((item) => {
+      const latest = latestById.get(Number(item.productId));
+      return Math.round(num(item.price) * 100) !== Math.round(num(latest.price) * 100);
+    });
+    setCart((current) =>
+      current.map((item) => {
+        const latest = latestById.get(Number(item.productId));
+        const price = num(latest.price);
+        const taxRate = num(latest.taxRate);
+        return { ...item, price, taxRate };
+      }),
+    );
+    if (changed) toast("Product prices were updated. Review the new total before confirming.", { icon: "ℹ️" });
+    return true;
+  };
 
   const paymentList = checkout.split
     ? Object.entries(checkout.payments)
@@ -485,7 +532,7 @@ export default function Billing() {
         // Same key for every retry of this sale — the server returns the original bill
         // rather than creating a second one and taking the stock down twice.
         clientRef: clientRef.current,
-        items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity, discount: num(i.discount) })),
+        items: cart.map((i) => ({ productId: i.productId, expectedPrice: i.price, quantity: i.quantity, discount: num(i.discount) })),
         customerId: customer?.id,
         customerName: custName || undefined,
         customerPhone: cleanedPhone || undefined,
@@ -508,7 +555,14 @@ export default function Billing() {
       if (settings.autoPrintAfterSale) printReceipt(bill, settings);
     } catch (err) {
       const status = err?.response?.status;
-      if (!err?.response) {
+      if (err?.response?.data?.code === "PRICE_CHANGED") {
+        try {
+          await refreshCartPrices();
+        } catch (refreshError) {
+          toast.error(getErrorMessage(refreshError));
+        }
+        toast.error("A product price changed before the sale was saved. Review the updated total and confirm again.");
+      } else if (!err?.response) {
         // Nothing came back: the bill may or may not have been written. Keeping the same
         // clientRef means pressing Confirm again is safe either way.
         toast.error("No answer from the server — check the connection and press Confirm again. The bill will not be duplicated.", {
@@ -524,12 +578,21 @@ export default function Billing() {
     }
   };
 
-  const openCheckout = () => {
+  const openCheckout = async () => {
     if (!online) return toast.error("Counter Paused: Selling is stopped while offline. Connection to server is required.", { id: "offline-selling-paused" });
     if (!cart.length) return;
-    setCartOpen(false);
-    setCheckout((c) => ({ ...c, method: methods.includes(c.method) ? c.method : methods[0] }));
-    setCheckoutOpen(true);
+    if (refreshingPrices) return;
+    setRefreshingPrices(true);
+    try {
+      if (!(await refreshCartPrices())) return;
+      setCartOpen(false);
+      setCheckout((c) => ({ ...c, method: methods.includes(c.method) ? c.method : methods[0] }));
+      setCheckoutOpen(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setRefreshingPrices(false);
+    }
   };
 
   // ── Keyboard: USB scanner (typing outside inputs) + shortcuts ─────────────
@@ -804,8 +867,8 @@ export default function Billing() {
         <button className="btn-ghost" style={{ flexShrink: 0 }} onClick={() => setCartOpen(true)} disabled={!cart.length}>
           View
         </button>
-        <button className="btn-primary" style={{ flexShrink: 0, opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }} onClick={openCheckout} disabled={!cart.length || !online}>
-          <Receipt size={14} /> Pay
+        <button className="btn-primary" style={{ flexShrink: 0, opacity: !online || refreshingPrices ? 0.6 : 1, cursor: !online || refreshingPrices ? "not-allowed" : "pointer" }} onClick={openCheckout} disabled={!cart.length || !online || refreshingPrices}>
+          <Receipt size={14} /> {refreshingPrices ? "Checking..." : "Pay"}
         </button>
       </div>
 
@@ -832,7 +895,7 @@ export default function Billing() {
                   <PauseCircle size={13} /> Hold
                 </button>
                 <button
-                  onClick={() => window.confirm("Clear the cart?") && resetSale()}
+                  onClick={() => setClearCartConfirm(true)}
                   style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
                 >
                   <Trash2 size={12} /> Clear
@@ -885,233 +948,36 @@ export default function Billing() {
                 <span style={{ ...mono, color: "var(--accent-dark)" }}>{formatCurrency(calc.totalAmount)}</span>
               </div>
             </div>
-            <button onClick={openCheckout} disabled={!cart.length || !online} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14, opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
-              {online ? <><Receipt size={15} /> Checkout (F9)</> : <><WifiOff size={15} /> Selling Paused (Offline)</>}
+            <button onClick={openCheckout} disabled={!cart.length || !online || refreshingPrices} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14, opacity: !online || refreshingPrices ? 0.6 : 1, cursor: !online || refreshingPrices ? "not-allowed" : "pointer" }}>
+              {!online ? <><WifiOff size={15} /> Selling Paused (Offline)</> : <><Receipt size={15} /> {refreshingPrices ? "Checking prices..." : "Checkout (F9)"}</>}
             </button>
           </div>
         )}
       </div>
 
       {/* ── Checkout modal ── */}
-      <Modal isOpen={checkoutOpen} onClose={() => setCheckoutOpen(false)} title="Complete sale" maxWidth={520}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {!online && (
-            <div style={{ background: "var(--danger-light)", color: "var(--danger)", padding: "10px 14px", borderRadius: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
-              <WifiOff size={16} style={{ flexShrink: 0 }} />
-              <span>Connection lost. Selling is paused until the server reconnects. Scanned cart items remain safe.</span>
-            </div>
-          )}
-          <div className="card-sunken" style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {cart.length} items · {custName || custPhone || "Walk-in customer"}
-              </p>
-              <p style={{ fontSize: 26, fontWeight: 600, color: "var(--accent-dark)", ...mono }}>{formatCurrency(calc.totalAmount)}</p>
-              <p style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic", marginTop: 2 }}>{amountToWords(calc.totalAmount)}</p>
-            </div>
-            {(calc.billDiscount > 0 || calc.loyaltyDiscount > 0) && (
-              <div style={{ textAlign: "right", fontSize: 12, color: "var(--success)" }}>
-                {calc.billDiscount > 0 && <p>Discount −{formatCurrency(calc.billDiscount)}</p>}
-                {calc.loyaltyDiscount > 0 && <p>Points −{formatCurrency(calc.loyaltyDiscount)}</p>}
-              </div>
-            )}
-          </div>
+      <CheckoutModal
+        isOpen={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        online={online}
+        cart={cart}
+        custName={custName}
+        custPhone={custPhone}
+        calc={calc}
+        canDiscount={canDiscount}
+        checkout={checkout}
+        setCheckout={setCheckout}
+        settings={settings}
+        customer={customer}
+        methods={methods}
+        tendered={tendered}
+        change={change}
+        due={due}
+        creditChosen={creditChosen}
+        submitting={submitting}
+        submitBill={submitBill}
+      />
 
-          {canDiscount && (
-            <FormField label="Bill discount">
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="number"
-                  min="0"
-                  className="input-field"
-                  value={checkout.discountValue}
-                  onChange={(e) => setCheckout({ ...checkout, discountValue: e.target.value })}
-                  placeholder="0"
-                  style={{ flex: 1 }}
-                />
-                <select className="input-field" style={{ width: 90 }} value={checkout.discountType} onChange={(e) => setCheckout({ ...checkout, discountType: e.target.value })}>
-                  <option value="amount">{currencySymbol()}</option>
-                  <option value="percent">%</option>
-                </select>
-              </div>
-            </FormField>
-          )}
-
-          {settings.loyaltyEnabled && customer && num(customer.loyaltyPoints) >= num(settings.loyaltyMinRedeem) && (
-            <FormField label={`Redeem points (has ${num(customer.loyaltyPoints)}, 1 pt = ${formatCurrency(settings.loyaltyPointValue)})`}>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="number"
-                  min="0"
-                  max={num(customer.loyaltyPoints)}
-                  className="input-field"
-                  value={checkout.redeemPoints}
-                  onChange={(e) => setCheckout({ ...checkout, redeemPoints: e.target.value })}
-                  style={{ flex: 1 }}
-                />
-                <button className="btn-ghost" onClick={() => setCheckout({ ...checkout, redeemPoints: String(Math.floor(num(customer.loyaltyPoints))) })}>
-                  Use all
-                </button>
-              </div>
-            </FormField>
-          )}
-
-          <FormField label="Payment">
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(4, methods.length + 1)}, 1fr)`, gap: 8 }}>
-              {methods.map((m) => {
-                const active = !checkout.split && checkout.method === m;
-                return (
-                  <button
-                    key={m}
-                    onClick={() => setCheckout({ ...checkout, split: false, method: m, tendered: "" })}
-                    style={{
-                      padding: "9px 4px",
-                      borderRadius: 9,
-                      border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                      background: active ? "var(--accent-light)" : "var(--bg-sunken)",
-                      color: active ? "var(--accent-dark)" : "var(--text-secondary)",
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {PAYMENT_LABELS[m] || m}
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => setCheckout({ ...checkout, split: true, payments: {} })}
-                style={{
-                  padding: "9px 4px",
-                  borderRadius: 9,
-                  border: `1px solid ${checkout.split ? "var(--accent)" : "var(--border)"}`,
-                  background: checkout.split ? "var(--accent-light)" : "var(--bg-sunken)",
-                  color: checkout.split ? "var(--accent-dark)" : "var(--text-secondary)",
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Split
-              </button>
-            </div>
-          </FormField>
-
-          {!checkout.split && checkout.method === "cash" && (
-            <FormField label="Cash received (optional — to calculate change)">
-              <input
-                type="number"
-                min="0"
-                className="input-field"
-                value={checkout.tendered}
-                onChange={(e) => setCheckout({ ...checkout, tendered: e.target.value })}
-                onKeyDown={(e) => {
-                  // Type the cash received, press Enter, done — no reaching for the mouse.
-                  if (e.key === "Enter" && !submitting) {
-                    e.preventDefault();
-                    submitBill();
-                  }
-                }}
-                placeholder={calc.totalAmount.toFixed(2)}
-                inputMode="decimal"
-                autoFocus
-              />
-              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                {[...new Set([Math.ceil(calc.totalAmount / 10) * 10, Math.ceil(calc.totalAmount / 100) * 100, Math.ceil(calc.totalAmount / 500) * 500, 2000])]
-                  .filter((v) => v >= calc.totalAmount)
-                  .slice(0, 4)
-                  .map((v) => (
-                    <button key={v} className="btn-ghost" style={{ padding: "4px 10px" }} onClick={() => setCheckout({ ...checkout, tendered: String(v) })}>
-                      {formatCurrency(v)}
-                    </button>
-                  ))}
-              </div>
-            </FormField>
-          )}
-
-          {checkout.split && (
-            <div className="form-grid" style={{ gap: 10 }}>
-              {methods.map((m) => (
-                <FormField key={m} label={PAYMENT_LABELS[m] || m}>
-                  <input
-                    type="number"
-                    min="0"
-                    className="input-field"
-                    value={checkout.payments[m] || ""}
-                    onChange={(e) => setCheckout({ ...checkout, payments: { ...checkout.payments, [m]: e.target.value } })}
-                  />
-                </FormField>
-              ))}
-            </div>
-          )}
-
-          <div className="card-sunken" style={{ padding: "10px 14px", fontSize: 13, display: "flex", flexDirection: "column", gap: 4 }}>
-            <Row label="Paid now" value={formatCurrency(Math.min(tendered, calc.totalAmount))} />
-            {change > 0 && <Row label="Change to return" value={formatCurrency(change)} color="var(--success)" bold />}
-            {due > 0 && <Row label="Balance due (credit)" value={formatCurrency(due)} color="var(--danger)" bold />}
-          </div>
-
-          {/* A shortfall is almost always a typo. It becomes udhaar only when the cashier
-              says so, so a mistyped tender can no longer turn into silent debt. */}
-          {due > 0 && !creditChosen && (
-            <label
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 10,
-                padding: "11px 13px",
-                borderRadius: 10,
-                cursor: "pointer",
-                background: checkout.acceptDue ? "var(--danger-light)" : "var(--bg-sunken)",
-                border: `1px solid ${checkout.acceptDue ? "var(--danger)" : "var(--border)"}`,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={!!checkout.acceptDue}
-                onChange={(e) => setCheckout({ ...checkout, acceptDue: e.target.checked })}
-                style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0, accentColor: "var(--danger)" }}
-              />
-              <span style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>
-                Put the balance of <b>{formatCurrency(due)}</b> on credit (udhaar)
-                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>
-                  {custName || custPhone
-                    ? `Added to ${custName || custPhone}'s account to collect later.`
-                    : "Enter the customer's phone above — a due needs an account to collect from."}
-                </span>
-              </span>
-            </label>
-          )}
-
-          <div className="form-grid" style={{ gap: 12 }}>
-            <FormField label="Note (optional)">
-              <input className="input-field" value={checkout.notes} onChange={(e) => setCheckout({ ...checkout, notes: e.target.value })} />
-            </FormField>
-            {/* A B2B buyer needs their GSTIN on the invoice to claim input credit */}
-            <FormField label="Customer GSTIN (optional)" hint="For a B2B tax invoice">
-              <input
-                className="input-field"
-                value={checkout.customerGst}
-                onChange={(e) => setCheckout({ ...checkout, customerGst: e.target.value.toUpperCase() })}
-                placeholder="33ABCDE1234F1Z5"
-                maxLength={15}
-                style={{ textTransform: "uppercase", fontFamily: "JetBrains Mono, monospace" }}
-              />
-            </FormField>
-          </div>
-
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => setCheckoutOpen(false)} className="btn-ghost" style={{ flex: 1, justifyContent: "center" }}>
-              Back
-            </button>
-            <button onClick={submitBill} disabled={submitting || !online} className="btn-primary" style={{ flex: 2, justifyContent: "center", padding: "11px", opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
-              {submitting ? <Spinner size={14} color="var(--bg)" /> : !online ? <><WifiOff size={15} /> Offline — Selling Paused</> : <><CheckCircle size={15} /> Confirm sale (F9)</>}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── Held bills ── */}
       <Modal isOpen={heldOpen} onClose={() => setHeldOpen(false)} title="Held bills" maxWidth={460}>
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>Held bills expire automatically after 7 days.</p>
         {held.length === 0 ? (
@@ -1206,6 +1072,27 @@ export default function Billing() {
           </div>
         )}
       </Modal>
+      <ConfirmDialog
+        isOpen={!!heldBillToResume}
+        onClose={() => setHeldBillToResume(null)}
+        onConfirm={() => {
+          const heldBill = heldBillToResume;
+          setHeldBillToResume(null);
+          if (heldBill) applyHeldBill(heldBill);
+        }}
+        title="Replace current cart?"
+        message="This replaces the items in your current cart with the held bill. The current cart will be cleared."
+      />
+      <ConfirmDialog
+        isOpen={clearCartConfirm}
+        onClose={() => setClearCartConfirm(false)}
+        onConfirm={() => {
+          setClearCartConfirm(false);
+          resetSale();
+        }}
+        title="Clear the cart?"
+        message="This removes all items and customer details from the current bill."
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // src/context/AuthContext.jsx — Secure authentication state using HTTP-only cookies
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { authAPI, adminAPI } from "../services/api";
+import { cartOwnerKey, clearPersistedCart } from "../utils/persistentCart";
 
 const AuthContext = createContext(null);
 
@@ -20,6 +21,8 @@ export const AuthProvider = ({ children }) => {
   const [isImpersonating, setIsImpersonating] = useState(() => !!read("isImpersonating"));
 
   const persistSession = useCallback((u, s, impersonating = false) => {
+    const previousOwner = cartOwnerKey(read("user"), read("shop"));
+    if (previousOwner !== cartOwnerKey(u, s)) clearPersistedCart();
     setUser(u);
     if (s) setShop(s);
     setIsImpersonating(impersonating);
@@ -55,6 +58,7 @@ export const AuthProvider = ({ children }) => {
   // Used by platform admin "Open shop" (support access)
   const loginWithSession = useCallback(
     ({ user: u, shop: s }) => {
+      clearPersistedCart();
       persistSession(u, s, true);
       window.location.href = "/dashboard";
     },
@@ -65,14 +69,17 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await adminAPI.returnToAdmin();
       const { user: u, shop: s } = res.data.data;
+      clearPersistedCart();
       persistSession(u, s, false);
       window.location.href = "/admin";
     } catch {
+      clearPersistedCart();
       window.location.href = "/login";
     }
   }, [persistSession]);
 
   const logout = useCallback(async () => {
+    clearPersistedCart();
     try {
       await authAPI.logout();
     } catch {
@@ -88,6 +95,8 @@ export const AuthProvider = ({ children }) => {
   const refresh = useCallback(async () => {
     const res = await authAPI.getMe();
     const { user: u, shop: s } = res.data.data;
+    const previousOwner = cartOwnerKey(read("user"), read("shop"));
+    if (previousOwner !== cartOwnerKey(u, s)) clearPersistedCart();
     setUser(u);
     setShop(s);
     localStorage.setItem("user", JSON.stringify(u));
@@ -104,6 +113,8 @@ export const AuthProvider = ({ children }) => {
       .then((res) => {
         if (!mounted) return;
         const { user: u, shop: s } = res.data.data;
+        const previousOwner = cartOwnerKey(read("user"), read("shop"));
+        if (previousOwner !== cartOwnerKey(u, s)) clearPersistedCart();
         setUser(u);
         setShop(s);
         localStorage.setItem("user", JSON.stringify(u));
@@ -117,6 +128,8 @@ export const AuthProvider = ({ children }) => {
             .then((r) => {
               if (!mounted) return;
               const { user: u, shop: s } = r.data.data;
+              const previousOwner = cartOwnerKey(read("user"), read("shop"));
+              if (previousOwner !== cartOwnerKey(u, s)) clearPersistedCart();
               setUser(u);
               setShop(s);
               localStorage.setItem("user", JSON.stringify(u));
@@ -128,6 +141,7 @@ export const AuthProvider = ({ children }) => {
               setUser(null);
               setShop(null);
               setIsImpersonating(false);
+              clearPersistedCart();
               localStorage.removeItem("user");
               localStorage.removeItem("shop");
               localStorage.removeItem("isImpersonating");
@@ -145,6 +159,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const onUnauthorized = () => {
+      clearPersistedCart();
       setUser(null);
       setShop(null);
       setIsImpersonating(false);

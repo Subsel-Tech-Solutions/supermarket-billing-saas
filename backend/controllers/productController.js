@@ -211,6 +211,7 @@ const updateProduct = asyncHandler(async (req, res) => {
   if (!product) throw new HttpError(404, "Product not found");
   const data = productFields(req.body || {}, true);
   if (data.name === null) throw new HttpError(400, "Product name is required");
+  if (!product.isActive && data.isActive === true) await assertProductLimit(req);
   assertQuantity(req.body.quantity, "Stock");
   assertQuantity(req.body.reorderLevel, "Reorder level");
   if (data.barcode !== undefined) await assertBarcodeFree(db, data.barcode, product.id);
@@ -364,6 +365,7 @@ const deleteProduct = asyncHandler(async (req, res) => {
 const restoreProduct = asyncHandler(async (req, res) => {
   const product = await req.db.Product.findByPk(req.params.id);
   if (!product) throw new HttpError(404, "Product not found");
+  if (!product.isActive) await assertProductLimit(req);
   await assertBarcodeFree(req.db, product.barcode, product.id);
   await product.update({ isActive: true });
   res.json({ success: true, message: "Product restored", data: { product } });

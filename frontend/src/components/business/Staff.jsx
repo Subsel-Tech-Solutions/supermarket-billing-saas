@@ -1,7 +1,7 @@
 // src/components/business/Staff.jsx — owner creates logins for managers & cashiers
 import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { UserCog, Plus, Edit2, Trash2 } from "lucide-react";
+import { UserCog, Plus, Edit2, Trash2, AlertTriangle } from "lucide-react";
 import { staffAPI } from "../../services/api";
 import { formatDateTime, getErrorMessage, ROLE_LABELS } from "../../utils/helpers";
 import { useAuth } from "../../context/AuthContext";
@@ -65,17 +65,25 @@ export default function Staff() {
   };
 
   const isSelf = edit?.id === user?.id;
+  const activeUsers = rows.filter((row) => row.isActive).length;
+  const overUserLimit = limits?.maxUsers > 0 && activeUsers > limits.maxUsers;
   return (
     <Page maxWidth={1080}>
       <SectionHeader
         title="Staff"
-        subtitle={`${rows?.length || 0}${limits?.maxUsers ? ` of ${limits.maxUsers}` : ""} user logins for this shop`}
+        subtitle={`${activeUsers}${limits?.maxUsers ? ` of ${limits.maxUsers}` : ""} active user logins for this shop`}
         actions={
-          <button className="btn-primary" onClick={() => open(null)} disabled={Boolean(limits?.maxUsers && (rows?.length || 0) >= limits.maxUsers)}>
+          <button className="btn-primary" onClick={() => open(null)} disabled={Boolean(limits?.maxUsers && activeUsers >= limits.maxUsers)}>
             <Plus size={14} /> Add staff
           </button>
         }
       />
+      {overUserLimit && (
+        <div role="status" style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "11px 14px", marginBottom: 16, borderRadius: 8, background: "var(--warning-light, rgba(217, 148, 48, 0.12))", color: "var(--text-secondary)", fontSize: 12.5 }}>
+          <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>This shop has {activeUsers - limits.maxUsers} more active user{activeUsers - limits.maxUsers === 1 ? "" : "s"} than its plan allows. Existing accounts remain available; deactivate accounts to meet the limit before adding or reactivating staff.</span>
+        </div>
+      )}
       <div className="grid-stats" style={{ marginBottom: 16 }}>
         {Object.entries(PERMS).map(([r, d]) => (
           <div key={r} className="card" style={{ padding: "12px 16px" }}>

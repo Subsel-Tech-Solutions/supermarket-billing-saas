@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { customerAPI } from "../../services/api";
-import { getErrorMessage, cleanPhone, isValidPhone } from "../../utils/helpers";
+import { getErrorMessage, cleanPhone, isValidPhone, numericOnly, blockNonNumericKeys } from "../../utils/helpers";
 import { Modal, Field, Grid, Spinner } from "../shared/UI";
 import { useAuth } from "../../context/AuthContext";
 
@@ -80,11 +80,12 @@ export default function CustomerForm({ isOpen, onClose, customer, onSaved }) {
         >
           <input
             className="input-field"
-            type="number"
-            min="0"
+            type="text"
+            inputMode="decimal"
             disabled={!canEditCredit}
             value={form.creditLimit === null || form.creditLimit === undefined ? "" : form.creditLimit}
-            onChange={(e) => set("creditLimit", e.target.value)}
+            onChange={(e) => set("creditLimit", numericOnly(e.target.value, true))}
+            onKeyDown={blockNonNumericKeys(true)}
             placeholder={!canEditCredit ? (customer?.creditLimit === null ? "Unlimited" : "₹0.00 (No credit)") : "0 (No credit allowed)"}
             style={!canEditCredit ? { opacity: 0.7, cursor: "not-allowed", background: "var(--bg-sunken)" } : undefined}
           />

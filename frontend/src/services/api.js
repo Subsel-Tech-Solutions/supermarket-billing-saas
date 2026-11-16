@@ -1,5 +1,6 @@
 // src/services/api.js — Secure API client with HTTP-only cookies, automatic token refresh queue, and CSRF protection
 import axios from "axios";
+import { clearPersistedCart } from "../utils/persistentCart";
 
 export const BASE_URL = (process.env.REACT_APP_API_URL || "/api").replace(/\/$/, "");
 
@@ -83,7 +84,8 @@ api.interceptors.response.use(
           return api(originalRequest);
         } catch (refreshErr) {
           processQueue(refreshErr);
-          // Purge session cache while preserving counter cart & local theme
+          // Purge session data and abandoned cart while preserving the local theme.
+          clearPersistedCart();
           ["user", "shop", "isImpersonating", "token", "adminToken"].forEach((k) => localStorage.removeItem(k));
           window.dispatchEvent(new CustomEvent("auth-unauthorized"));
           if (!isPublicAuthRoute()) {
@@ -95,6 +97,7 @@ api.interceptors.response.use(
         }
       } else if (isAuthRoute) {
         if (url.includes("/auth/refresh")) {
+          clearPersistedCart();
           ["user", "shop", "isImpersonating", "token", "adminToken"].forEach((k) => localStorage.removeItem(k));
           window.dispatchEvent(new CustomEvent("auth-unauthorized"));
           if (!isPublicAuthRoute()) {

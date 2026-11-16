@@ -17,6 +17,19 @@ module.exports = (sequelize) => {
     { tableName: "settings" },
   );
 
+  const sequenceAllocation = (name, tableName) => sequelize.define(
+    name,
+    {
+      id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+      isSeed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_seed" },
+    },
+    { tableName, timestamps: false },
+  );
+
+  const BillSequenceAllocation = sequenceAllocation("BillSequenceAllocation", "bill_sequence_allocations");
+  const PurchaseSequenceAllocation = sequenceAllocation("PurchaseSequenceAllocation", "purchase_sequence_allocations");
+  const ReturnSequenceAllocation = sequenceAllocation("ReturnSequenceAllocation", "return_sequence_allocations");
+
   const Expense = sequelize.define(
     "Expense",
     {
@@ -33,5 +46,5 @@ module.exports = (sequelize) => {
     { tableName: "expenses", indexes: [{ name: "ix_expenses_date", fields: ["expense_date"] }] },
   );
 
-  return { Setting, Expense };
+  return { Setting, BillSequenceAllocation, PurchaseSequenceAllocation, ReturnSequenceAllocation, Expense };
 };
