@@ -1,13 +1,14 @@
 // controllers/adminController.js — PLATFORM super-admin: manage every business
 const { Op } = require("sequelize");
-const { Shop, User, PlatformSetting } = require("../models/master");
-const { getTenant, closeTenant, stats: tenantStats } = require("../tenant/tenantManager");
+const jwt = require("jsonwebtoken");
+const { Shop, User, PlatformSetting, RefreshToken } = require("../models/master");
+const { getTenant, closeTenant, dbNameForShop, stats: tenantStats } = require("../tenant/tenantManager");
 const { createDatabaseIfMissing, assertSafeDbName, sequelize: master } = require("../config/database");
 const { asyncHandler, HttpError, str, int, num, bool, round2 } = require("../utils/helpers");
 const { getPlatformSettings, clearPlatformCache } = require("../utils/settings");
-const { mergePlatform } = require("../utils/defaults");
+const { mergePlatform, SIGNUP_POLICY_VERSION } = require("../utils/defaults");
 const { createShopWithOwner } = require("../utils/shopService");
-const { signToken } = require("../middleware/auth");
+const { setAuthCookies } = require("../middleware/auth");
 const { shopPayload } = require("../utils/shopPayload");
 
 // Per-shop numbers come from each shop's own database → cache briefly
@@ -17,14 +18,28 @@ const tenantSummary = async (shop) => {
   if (hit && Date.now() - hit.at < 60000) return hit.value;
   let value = { products: 0, bills: 0, revenue: 0, customers: 0, dbOk: false };
   try {
-    const { models } = await getTenant(shop);
-    const [products, bills, revenue, customers] = await Promise.all([
-      models.Product.count({ where: { isActive: true } }),
-      models.Bill.count({ where: { status: { [Op.ne]: "cancelled" } } }),
-      models.Bill.sum("totalAmount", { where: { status: { [Op.ne]: "cancelled" } } }),
-      models.Customer.count(),
-    ]);
-    value = { products, bills, revenue: Number(revenue) || 0, customers, dbOk: true };
+    const dbName = shop.dbName || dbNameForShop(shop.id);
+    assertSafeDbName(dbName);
+    const [rows] = await master.query(
+      `SELECT
+        (SELECT COUNT(*) FROM \`${dbName}\`.products WHERE is_active = 1) AS products,
+        (SELECT COUNT(*) FROM \`${dbName}\`.bills WHERE status != 'cancelled') AS bills,
+        (SELECT COALESCE(SUM(total_amount), 0) FROM \`${dbName}\`.bills WHERE status != 'cancelled') AS revenue,
+        (SELECT COUNT(*) FROM \`${dbName}\`.customers) AS customers`
+    );
+    if (rows && rows[0]) {
+      value = {
+        products: Number(rows[0].products) || 0,
+        bills: Number(rows[0].bills) || 0,
+        revenue: Number(rows[0].revenue) || 0,
+        customers: Number(rows[0].customers) || 0,
+        dbOk: true,
+      };
+
+
+
+    }
+
   } catch (err) {
     value.error = err.message;
   }
@@ -279,6 +294,16 @@ const toggleShop = asyncHandler(async (req, res) => {
   if (shop.id === req.shopId) throw new HttpError(400, "You cannot deactivate your own shop");
   shop.isActive = !shop.isActive;
   await shop.save();
+
+  if (!shop.isActive) {
+    const users = await User.findAll({ where: { shopId: shop.id } });
+    const userIds = users.map((u) => u.id);
+    if (userIds.length) {
+      await User.increment("tokenVersion", { where: { id: userIds } });
+      await RefreshToken.update({ isRevoked: true }, { where: { userId: userIds } });
+    }
+  }
+
   res.json({ success: true, message: shop.isActive ? "Shop activated" : "Shop deactivated", data: { isActive: shop.isActive } });
 });
 
@@ -292,25 +317,95 @@ const resetPassword = asyncHandler(async (req, res) => {
   const user = await User.findOne({ where, order: [["id", "ASC"]] });
   if (!user) throw new HttpError(404, "User not found");
   user.password = newPassword;
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
   await user.save();
+  await RefreshToken.update({ isRevoked: true }, { where: { userId: user.id } });
   res.json({ success: true, message: `Password reset for ${user.email}` });
 });
 
-// POST /api/admin/shops/:id/login-as — support access: token for the shop owner
+// POST /api/admin/shops/:id/login-as — support access: cookies for the shop owner
 const loginAs = asyncHandler(async (req, res) => {
   const platform = await getPlatformSettings();
   const shop = await Shop.findByPk(req.params.id);
   if (!shop) throw new HttpError(404, "Shop not found");
   const owner = await User.findOne({ where: { shopId: shop.id, role: "owner", isActive: true }, order: [["id", "ASC"]] });
   if (!owner) throw new HttpError(404, "No active owner for this shop");
-  // Support access to someone else's books is the most sensitive action on the platform —
-  // always leave a trace of who opened which shop and when.
+
   console.warn(
     `[AUDIT] ${new Date().toISOString()} support login: ${req.user.email} (user #${req.user.id}) opened shop #${shop.id} "${shop.name}" as ${owner.email}`,
   );
+
+  const isProd = process.env.NODE_ENV === "production";
+  if (req.cookies?.accessToken) {
+    res.cookie("adminAccessToken", req.cookies.accessToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+  }
+  if (req.cookies?.refreshToken) {
+    res.cookie("adminRefreshToken", req.cookies.refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/api/auth",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+  }
+
+  await setAuthCookies(res, owner);
+
   res.json({
     success: true,
-    data: { token: signToken(owner), user: owner.toSafeJSON(), shop: shopPayload(shop, platform) },
+    data: { user: owner.toSafeJSON(), shop: shopPayload(shop, platform), isImpersonating: true },
+  });
+});
+
+// POST /api/admin/return-to-admin — restore admin session from admin cookies
+const returnToAdmin = asyncHandler(async (req, res) => {
+  const adminAccessToken = req.cookies?.adminAccessToken;
+  const adminRefreshToken = req.cookies?.adminRefreshToken;
+  if (!adminAccessToken) {
+    throw new HttpError(400, "No admin session found to return to");
+  }
+  let decoded;
+  try {
+    decoded = jwt.verify(adminAccessToken, process.env.JWT_SECRET);
+  } catch {
+    throw new HttpError(401, "Admin session expired");
+  }
+  const admin = await User.findByPk(decoded.id, { include: [{ model: Shop, as: "shop" }] });
+  if (!admin || !admin.isActive || !admin.isSuperAdmin) {
+    throw new HttpError(403, "Admin user not found or inactive");
+  }
+
+  const isProd = process.env.NODE_ENV === "production";
+  res.cookie("accessToken", adminAccessToken, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 15 * 60 * 1000,
+  });
+  if (adminRefreshToken) {
+    res.cookie("refreshToken", adminRefreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/api/auth",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+  }
+  res.clearCookie("adminAccessToken", { httpOnly: true, secure: isProd, sameSite: "lax", path: "/" });
+  res.clearCookie("adminRefreshToken", { httpOnly: true, secure: isProd, sameSite: "lax", path: "/api/auth" });
+
+  const platform = await getPlatformSettings();
+  res.json({
+    success: true,
+    message: "Returned to admin console",
+    data: { user: { ...admin.toSafeJSON(), isSuperAdmin: true }, shop: shopPayload(admin.shop, platform, true) },
   });
 });
 
@@ -357,6 +452,8 @@ const updatePlatform = asyncHandler(async (req, res) => {
     if (b[k] !== undefined) next[k] = String(b[k] ?? "").slice(0, 200);
   });
   if (b.allowSignup !== undefined) next.allowSignup = bool(b.allowSignup);
+  if (b.signupInviteCode !== undefined) next.signupInviteCode = String(b.signupInviteCode).trim().slice(0, 100);
+  if (b.maxTenants !== undefined) next.maxTenants = Math.max(1, int(b.maxTenants, 100));
   if (b.trialDays !== undefined) next.trialDays = Math.max(1, Math.min(365, int(b.trialDays, 14)));
   if (b.defaultThemeMode !== undefined) next.defaultThemeMode = ["light", "dark", "system"].includes(b.defaultThemeMode) ? b.defaultThemeMode : "light";
   if (b.defaultAccentColor !== undefined && /^#[0-9a-fA-F]{6}$/.test(b.defaultAccentColor)) next.defaultAccentColor = b.defaultAccentColor;
@@ -375,7 +472,7 @@ const updatePlatform = asyncHandler(async (req, res) => {
     next.plans = plans;
   }
   const [row] = await PlatformSetting.findOrCreate({ where: { id: 1 }, defaults: { id: 1, data: {} } });
-  row.data = mergePlatform(next);
+  row.data = { ...mergePlatform(next), _signupPolicyVersion: SIGNUP_POLICY_VERSION };
   await row.save();
   clearPlatformCache();
   res.json({ success: true, message: "Platform settings saved", data: { settings: await getPlatformSettings(true) } });
@@ -391,6 +488,7 @@ module.exports = {
   toggleShop,
   resetPassword,
   loginAs,
+  returnToAdmin,
   deleteShop,
   repairDb,
   getPlatform,

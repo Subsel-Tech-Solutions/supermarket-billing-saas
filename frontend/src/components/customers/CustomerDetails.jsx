@@ -89,7 +89,17 @@ export default function CustomerDetails() {
         <MiniStat label="Bills" value={c.totalBills} />
         <MiniStat label={balance >= 0 ? "Due (to collect)" : "Advance / store credit"} value={formatCurrency(Math.abs(balance))} tone={balance > 0 ? "danger" : balance < 0 ? "success" : undefined} />
         <MiniStat label="Loyalty points" value={num(c.loyaltyPoints)} tone="accent" />
-        <MiniStat label="Credit limit" value={num(c.creditLimit) > 0 ? formatCurrency(c.creditLimit) : "No limit"} />
+        <MiniStat
+          label="Credit limit"
+          value={
+            c.creditLimit === null
+              ? "Unlimited"
+              : num(c.creditLimit) > 0
+              ? formatCurrency(c.creditLimit)
+              : "₹0.00 (No credit)"
+          }
+          tone={c.creditLimit === null ? "accent" : num(c.creditLimit) > 0 ? undefined : "danger"}
+        />
       </div>
 
       <Tabs

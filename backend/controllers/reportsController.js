@@ -1,6 +1,6 @@
 // controllers/reportsController.js — analytics for ONE business (its own database)
 const { Op, QueryTypes, literal } = require("sequelize");
-const { asyncHandler, round2, round3, int } = require("../utils/helpers");
+const { asyncHandler, round2, round3, int, paging, str } = require("../utils/helpers");
 const { getShopSettings } = require("../utils/settings");
 const { todayRange, monthRange, rangeFromStrings, offsetString, localDateString } = require("../utils/dates");
 
@@ -72,19 +72,25 @@ const profitBetween = async (req, start, end) => {
 };
 
 // Split payments JSON → totals per method (sales only, not later due collections)
-const paymentBreakdown = async (req, start, end) => {
+const billPayments = (bill, includeSettlements = false) => {
+  const list = Array.isArray(bill.payments) && bill.payments.length
+    ? bill.payments
+    : [{ method: bill.paymentMethod, amount: Number(bill.totalAmount) }];
+  return list.filter((payment) => includeSettlements || !payment.settlement);
+};
+
+const paymentBreakdown = async (req, start, end, includeCancelled = false) => {
+  const where = { createdAt: { [Op.between]: [start, end] } };
+  if (!includeCancelled) where.status = { [Op.ne]: "cancelled" };
   const bills = await req.db.Bill.findAll({
-    where: { status: { [Op.ne]: "cancelled" }, createdAt: { [Op.between]: [start, end] } },
+    where,
     attributes: ["id", "payments", "paymentMethod", "totalAmount"],
   });
   const totals = {};
   bills.forEach((b) => {
-    const list = Array.isArray(b.payments) && b.payments.length ? b.payments : [{ method: b.paymentMethod, amount: Number(b.totalAmount) }];
-    list
-      .filter((p) => !p.settlement)
-      .forEach((p) => {
-        totals[p.method] = round2((totals[p.method] || 0) + (Number(p.amount) || 0));
-      });
+    billPayments(b).forEach((p) => {
+      totals[p.method] = round2((totals[p.method] || 0) + (Number(p.amount) || 0));
+    });
   });
   return Object.entries(totals)
     .map(([method, amount]) => ({ method, amount }))
@@ -442,17 +448,33 @@ const getDayEnd = asyncHandler(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || "") ? req.query.date : localDateString(new Date(), off);
   const { start, end } = rangeFromStrings(date, date, off);
 
-  const [totals, payments, collections, expenses, refunds, supplierPaid, cancelled] = await Promise.all([
+  const [totals, payments, collections, expenses, refunds, supplierPaid, cancelledBills] = await Promise.all([
     billTotals(req, start, end),
-    paymentBreakdown(req, start, end),
+    paymentBreakdown(req, start, end, true),
     db.CustomerPayment.findAll({ where: { createdAt: { [Op.between]: [start, end] } }, attributes: ["method", "amount"], raw: true }),
     db.Expense.findAll({ where: { expenseDate: date }, attributes: ["paymentMethod", "amount", "category"], raw: true }),
     db.SaleReturn.findAll({ where: { createdAt: { [Op.between]: [start, end] } }, attributes: ["refundMethod", "totalAmount"], raw: true }),
     db.SupplierPayment.findAll({ where: { createdAt: { [Op.between]: [start, end] } }, attributes: ["method", "amount"], raw: true }),
-    db.Bill.count({ where: { status: "cancelled", createdAt: { [Op.between]: [start, end] } } }),
+    // Cancelling a bill is its final write, so updatedAt records the day the tender was reversed.
+    db.Bill.findAll({
+      where: { status: "cancelled", updatedAt: { [Op.between]: [start, end] } },
+      attributes: ["payments", "paymentMethod", "totalAmount"],
+    }),
   ]);
   const sumBy = (rows, key, amountKey, match) => round2(rows.filter((r) => r[key] === match).reduce((a, r) => a + Number(r[amountKey]), 0));
   const cashSales = payments.find((p) => p.method === "cash")?.amount || 0;
+  const cancelledPayments = {};
+  cancelledBills.forEach((bill) => {
+    billPayments(bill, true)
+      .filter((payment) => payment.method !== "credit")
+      .forEach((payment) => {
+        cancelledPayments[payment.method] = round2((cancelledPayments[payment.method] || 0) + (Number(payment.amount) || 0));
+      });
+  });
+  const cancellationRefunds = Object.entries(cancelledPayments)
+    .map(([method, amount]) => ({ method, amount }))
+    .sort((a, b) => b.amount - a.amount);
+  const cashCancellations = cancelledPayments.cash || 0;
   const cashCollected = sumBy(collections, "method", "amount", "cash");
   const cashExpenses = sumBy(expenses, "paymentMethod", "amount", "cash");
   const cashRefunds = sumBy(refunds, "refundMethod", "totalAmount", "cash");
@@ -463,7 +485,8 @@ const getDayEnd = asyncHandler(async (req, res) => {
     data: {
       date,
       sales: totals,
-      cancelledBills: cancelled,
+      cancelledBills: cancelledBills.length,
+      cancellationRefunds,
       payments,
       collections: round2(collections.reduce((a, c) => a + Number(c.amount), 0)),
       expenses: round2(expenses.reduce((a, e) => a + Number(e.amount), 0)),
@@ -474,8 +497,9 @@ const getDayEnd = asyncHandler(async (req, res) => {
         collected: cashCollected,
         expenses: cashExpenses,
         refunds: cashRefunds,
+        cancellations: cashCancellations,
         suppliers: cashToSuppliers,
-        expectedInDrawer: round2(cashSales + cashCollected - cashExpenses - cashRefunds - cashToSuppliers),
+        expectedInDrawer: round2(cashSales + cashCollected - cashExpenses - cashRefunds - cashCancellations - cashToSuppliers),
       },
     },
   });
@@ -556,6 +580,51 @@ const getExpiryReport = asyncHandler(async (req, res) => {
   });
 });
 
+// ── GET /api/reports/audit-logs ──────────────────────────────────────────────
+const getAuditLogs = asyncHandler(async (req, res) => {
+  const db = req.db;
+  const settings = await getShopSettings(db);
+  const { page, limit, offset } = paging(req.query, 25, 200);
+  const { action, entityType, search, startDate, endDate } = req.query;
+
+  const where = {};
+  if (action) where.action = action;
+  if (entityType) where.entityType = entityType;
+
+  if (startDate || endDate) {
+    const { start, end } = rangeFromStrings(startDate, endDate, settings.timezoneOffsetMinutes);
+    where.createdAt = {};
+    if (start) where.createdAt[Op.gte] = start;
+    if (end) where.createdAt[Op.lte] = end;
+  }
+
+  if (search) {
+    const q = `%${String(search).trim()}%`;
+    where[Op.or] = [
+      { username: { [Op.like]: q } },
+      { entityId: { [Op.like]: q } },
+      { action: { [Op.like]: q } },
+    ];
+  }
+
+  const { count, rows } = await db.AuditLog.findAndCountAll({
+    where,
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
+    limit,
+    offset,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      logs: rows,
+      total: count,
+      page,
+      pages: Math.max(1, Math.ceil(count / limit)),
+    },
+  });
+});
+
 module.exports = {
   getDashboard,
   getSalesReport,
@@ -567,4 +636,5 @@ module.exports = {
   getDayEnd,
   getStockReport,
   getExpiryReport,
+  getAuditLogs,
 };

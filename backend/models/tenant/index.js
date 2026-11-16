@@ -3,6 +3,7 @@ const defineCatalog = require("./catalog");
 const defineSales = require("./sales");
 const definePurchases = require("./purchases");
 const defineMisc = require("./misc");
+const defineAudit = require("./audit");
 
 module.exports = function defineTenantModels(sequelize) {
   const m = {
@@ -10,6 +11,7 @@ module.exports = function defineTenantModels(sequelize) {
     ...defineSales(sequelize),
     ...definePurchases(sequelize),
     ...defineMisc(sequelize),
+    ...defineAudit(sequelize),
   };
 
   // Catalog

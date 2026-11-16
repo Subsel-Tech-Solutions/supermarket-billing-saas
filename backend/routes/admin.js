@@ -3,6 +3,9 @@ const router = require("express").Router();
 const c = require("../controllers/adminController");
 const { protect, requireSuperAdmin } = require("../middleware/auth");
 
+// Return to admin can be called while impersonating a shop owner (who has adminAccessToken cookie)
+router.post("/return-to-admin", c.returnToAdmin);
+
 router.use(protect, requireSuperAdmin);
 
 router.get("/stats", c.getStats);

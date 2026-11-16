@@ -91,6 +91,14 @@ const calculateBill = (
 
 // Normalise payments → { payments, paid, due, change, method }
 const settlePayments = (total, body, settings) => {
+  const disallowedMethods = ["store_credit", "advance"];
+  if (disallowedMethods.includes(String(body.paymentMethod || "").toLowerCase())) {
+    throw new HttpError(400, "Store credit / advance cannot be used as a payment method");
+  }
+  if (Array.isArray(body.payments) && body.payments.some((p) => disallowedMethods.includes(String(p?.method || "").toLowerCase()))) {
+    throw new HttpError(400, "Store credit / advance cannot be used as a payment method");
+  }
+
   const allowed = PAYMENT_METHODS;
   let payments = Array.isArray(body.payments) ? body.payments : [];
   payments = payments

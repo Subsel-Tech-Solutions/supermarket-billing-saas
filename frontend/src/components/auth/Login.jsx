@@ -12,7 +12,6 @@ export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
   const { login } = useAuth();
   const { platform } = useSettings();
   const navigate = useNavigate();
@@ -250,20 +249,10 @@ export default function Login() {
 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: -2 }}>
                 <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Staff? Use the login your owner created.</span>
-                <button
-                  type="button"
-                  onClick={() => setShowHelp(!showHelp)}
-                  style={{ fontSize: 13, color: "var(--accent-dark)", fontWeight: 600, cursor: "pointer", background: "none", border: "none" }}
-                >
+                <Link to="/forgot-password" style={{ fontSize: 13, color: "var(--accent-dark)", fontWeight: 600, textDecoration: "none" }}>
                   Forgot password?
-                </button>
+                </Link>
               </div>
-              {showHelp && (
-                <div className="card-sunken" style={{ padding: "10px 12px", fontSize: 12.5, color: "var(--text-secondary)" }}>
-                  Staff: ask your shop owner to reset it from <b>Staff</b>. Owners: contact{" "}
-                  {platform.supportPhone || platform.supportEmail || "the platform administrator"} to reset your password.
-                </div>
-              )}
 
               <button
                 type="submit"

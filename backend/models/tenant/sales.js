@@ -1,6 +1,7 @@
 // models/tenant/sales.js — Customer, Bill, BillItem, HeldBill, SaleReturn, SaleReturnItem, CustomerPayment
 const { DataTypes } = require("sequelize");
 const { money, qty, jsonText } = require("./helpers");
+const { normalizePhone } = require("../../utils/helpers");
 
 module.exports = (sequelize) => {
   const Customer = sequelize.define(
@@ -8,12 +9,18 @@ module.exports = (sequelize) => {
     {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
       name: { type: DataTypes.STRING(120), allowNull: false, defaultValue: "Customer" },
-      phone: { type: DataTypes.STRING(20), allowNull: true },
+      phone: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        set(val) {
+          this.setDataValue("phone", normalizePhone(val));
+        },
+      },
       email: { type: DataTypes.STRING(120), allowNull: true },
       address: { type: DataTypes.TEXT, allowNull: true },
       gstNumber: { type: DataTypes.STRING(20), allowNull: true, field: "gst_number" },
       loyaltyPoints: money({ field: "loyalty_points" }),
-      creditLimit: money({ field: "credit_limit" }),
+      creditLimit: money({ field: "credit_limit", allowNull: true, defaultValue: 0 }),
       balance: money(), // amount the customer OWES the shop (credit / udhaar)
       totalSpent: money({ field: "total_spent" }),
       totalBills: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "total_bills" },
@@ -37,7 +44,14 @@ module.exports = (sequelize) => {
       clientRef: { type: DataTypes.STRING(64), allowNull: true, field: "client_ref" },
       customerId: { type: DataTypes.INTEGER, allowNull: true, field: "customer_id" },
       customerName: { type: DataTypes.STRING(120), allowNull: true, field: "customer_name" },
-      customerPhone: { type: DataTypes.STRING(20), allowNull: true, field: "customer_phone" },
+      customerPhone: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: "customer_phone",
+        set(val) {
+          this.setDataValue("customerPhone", normalizePhone(val));
+        },
+      },
       subtotal: money(), // Σ price × qty (before any discount)
       itemDiscount: money({ field: "item_discount" }),
       discountAmount: money({ field: "discount_amount" }), // bill-level discount

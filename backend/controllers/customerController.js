@@ -1,16 +1,45 @@
 // controllers/customerController.js — customers, credit (udhaar) and loyalty
 const { Op } = require("sequelize");
-const { asyncHandler, HttpError, num, str, round2, paging } = require("../utils/helpers");
+const { asyncHandler, HttpError, num, str, round2, paging, normalizePhone, isValidPhone } = require("../utils/helpers");
+const { normalizeGstin, isValidGstin } = require("../utils/gst");
 
-const customerFields = (b) => ({
-  name: str(b.name, 120) || "Customer",
-  phone: str(b.phone, 20),
-  email: str(b.email, 120),
-  address: str(b.address, 1000),
-  gstNumber: str(b.gstNumber, 20),
-  creditLimit: round2(Math.max(0, num(b.creditLimit))),
-  notes: str(b.notes, 2000),
-});
+const parseCreditLimit = (raw) => {
+  if (raw === undefined) return undefined;
+  if (raw === null || raw === "" || raw === "unlimited") return null;
+  return round2(Math.max(0, num(raw)));
+};
+
+const customerFields = (b, isCashier = false, existingCustomer = null) => {
+  const rawPhone = b.phone !== undefined && b.phone !== null ? String(b.phone).trim() : null;
+  let phone = null;
+  if (rawPhone) {
+    phone = normalizePhone(rawPhone);
+    if (!isValidPhone(rawPhone)) {
+      throw new HttpError(400, "Enter a valid 10-digit mobile number");
+    }
+  }
+
+  // Credit limit authorization:
+  // Default to 0 for new customers, or keep existingCustomer's limit.
+  // Only non-cashiers (owner/manager/superAdmin) can define or modify creditLimit.
+  let creditLimit = existingCustomer ? existingCustomer.creditLimit : 0;
+  if (!isCashier && b.creditLimit !== undefined) {
+    creditLimit = parseCreditLimit(b.creditLimit);
+  }
+
+  const gstNumber = normalizeGstin(str(b.gstNumber, 20));
+  if (gstNumber && !isValidGstin(gstNumber)) throw new HttpError(400, "Enter a valid 15-character customer GSTIN");
+
+  return {
+    name: str(b.name, 120) || "Customer",
+    phone,
+    email: str(b.email, 120),
+    address: str(b.address, 1000),
+    gstNumber: gstNumber || null,
+    creditLimit,
+    notes: str(b.notes, 2000),
+  };
+};
 
 // GET /api/customers
 const getCustomers = asyncHandler(async (req, res) => {
@@ -18,8 +47,14 @@ const getCustomers = asyncHandler(async (req, res) => {
   const { page, limit, offset } = paging(req.query, 50, 1000);
   const where = { isActive: true };
   if (req.query.search) {
-    const q = `%${String(req.query.search).trim()}%`;
-    where[Op.or] = [{ name: { [Op.like]: q } }, { phone: { [Op.like]: q } }, { email: { [Op.like]: q } }];
+    const qStr = String(req.query.search).trim();
+    const q = `%${qStr}%`;
+    const digitsOnly = normalizePhone(qStr);
+    const orConds = [{ name: { [Op.like]: q } }, { phone: { [Op.like]: q } }, { email: { [Op.like]: q } }];
+    if (digitsOnly && digitsOnly !== qStr) {
+      orConds.push({ phone: { [Op.like]: `%${digitsOnly}%` } });
+    }
+    where[Op.or] = orConds;
   }
   if (req.query.due === "true") where.balance = { [Op.gt]: 0 };
   const orders = {
@@ -53,8 +88,10 @@ const getCustomers = asyncHandler(async (req, res) => {
 
 // GET /api/customers/lookup?phone=
 const lookupCustomer = asyncHandler(async (req, res) => {
-  const phone = str(req.query.phone, 20);
-  if (!phone) throw new HttpError(400, "Phone is required");
+  const raw = str(req.query.phone, 30);
+  if (!raw) throw new HttpError(400, "Phone is required");
+  const phone = normalizePhone(raw);
+  if (!phone) throw new HttpError(400, "Invalid phone number format");
   const customer = await req.db.Customer.findOne({ where: { phone } });
   res.json({ success: true, data: { customer } });
 });
@@ -74,7 +111,15 @@ const getCustomer = asyncHandler(async (req, res) => {
 
 // POST /api/customers
 const createCustomer = asyncHandler(async (req, res) => {
-  const data = customerFields(req.body || {});
+  const isCashier = req.user.role === "cashier" && !req.isSuperAdmin;
+  if (isCashier && req.body && req.body.creditLimit !== undefined && req.body.creditLimit !== null && String(req.body.creditLimit).trim() !== "") {
+    const rawVal = req.body.creditLimit;
+    if (rawVal === "unlimited" || num(rawVal) > 0) {
+      throw new HttpError(403, "Cashiers are not allowed to assign customer credit limits");
+    }
+  }
+
+  const data = customerFields(req.body || {}, isCashier);
   if (!data.phone) throw new HttpError(400, "Phone number is required");
   const dup = await req.db.Customer.findOne({ where: { phone: data.phone } });
   if (dup) {
@@ -92,7 +137,17 @@ const createCustomer = asyncHandler(async (req, res) => {
 const updateCustomer = asyncHandler(async (req, res) => {
   const customer = await req.db.Customer.findByPk(req.params.id);
   if (!customer) throw new HttpError(404, "Customer not found");
-  const data = customerFields({ ...customer.get({ plain: true }), ...(req.body || {}) });
+
+  const isCashier = req.user.role === "cashier" && !req.isSuperAdmin;
+  if (isCashier && req.body && req.body.creditLimit !== undefined) {
+    const requested = parseCreditLimit(req.body.creditLimit);
+    const current = customer.creditLimit === null ? null : round2(num(customer.creditLimit));
+    if (requested !== current) {
+      throw new HttpError(403, "Cashiers are not allowed to change customer credit limits");
+    }
+  }
+
+  const data = customerFields({ ...customer.get({ plain: true }), ...(req.body || {}) }, isCashier, customer);
   if (!data.phone) throw new HttpError(400, "Phone number is required");
   if (data.phone !== customer.phone) {
     const dup = await req.db.Customer.findOne({ where: { phone: data.phone, id: { [Op.ne]: customer.id } } });
@@ -124,6 +179,10 @@ const receivePayment = asyncHandler(async (req, res) => {
   const db = req.db;
   const amount = round2(num(req.body?.amount));
   if (!(amount > 0)) throw new HttpError(400, "Enter a valid amount");
+  const disallowed = ["store_credit", "advance"];
+  if (disallowed.includes(String(req.body?.method || "").toLowerCase())) {
+    throw new HttpError(400, "Store credit / advance cannot be used as a payment method");
+  }
   const method = ["cash", "upi", "card", "cheque", "other"].includes(req.body?.method) ? req.body.method : "cash";
 
   const t = await req.tenant.sequelize.transaction();

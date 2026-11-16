@@ -19,16 +19,19 @@ import {
   X,
   Gift,
   Percent,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
 import BarcodeScanner from "../shared/BarcodeScanner";
 import { productAPI, billAPI, customerAPI, openInvoice, newClientRef } from "../../services/api";
-import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol } from "../../utils/helpers";
+import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol, cleanPhone, isValidPhone, amountToWords } from "../../utils/helpers";
 import { calculateBill } from "../../utils/billMath";
 import { printReceipt } from "../../utils/receipt";
 import { Spinner, Modal, FormField } from "../shared/UI";
 import { useSettings } from "../../context/SettingsContext";
 import { useAuth } from "../../context/AuthContext";
 import usePersistentCart from "../../hooks/usePersistentCart";
+import useOnline from "../../hooks/useOnline";
 
 const mono = { fontFamily: "JetBrains Mono, monospace" };
 const qtyBtn = {
@@ -59,6 +62,7 @@ function CartItem({ item, line, onQty, onDiscount, onRemove, canDiscount }) {
               {formatCurrency(item.price)}
               {item.unit && item.unit !== "pcs" ? `/${item.unit}` : ""}
             </span>
+            {item.hsnCode && <span>· HSN {item.hsnCode}</span>}
             {item.taxRate > 0 && <span>· GST {item.taxRate}%</span>}
             {num(item.discount) > 0 && <span style={{ color: "var(--success)" }}>· −{formatCurrency(item.discount)}</span>}
           </div>
@@ -159,6 +163,7 @@ export default function Billing() {
   // The cart lives in localStorage, so a refresh, a crash, an expired session or an
   // accidentally closed tab does not mean re-scanning the whole trolley.
   const { cart, setCart, meta, setMeta, restored, clearCart, dismissRestored } = usePersistentCart();
+  const { online, recheck, isChecking } = useOnline();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -169,6 +174,9 @@ export default function Billing() {
   const [custName, setCustName] = useState(() => meta.custName || "");
   const [lookingUp, setLookingUp] = useState(false);
   const [held, setHeld] = useState([]);
+  const [heldTotal, setHeldTotal] = useState(0);
+  const [heldPage, setHeldPage] = useState(1);
+  const [heldPages, setHeldPages] = useState(1);
   const [heldOpen, setHeldOpen] = useState(false);
   const [heldId, setHeldId] = useState(() => meta.heldId || null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -214,6 +222,7 @@ export default function Billing() {
         return [
           {
             productId: product.id,
+            hsnCode: product.hsnCode || null,
             name: product.name,
             mrp: product.mrp ? num(product.mrp) : null,
             price: num(product.price),
@@ -238,6 +247,10 @@ export default function Billing() {
     async (barcode) => {
       const code = String(barcode).trim();
       if (!code) return;
+      if (!online) {
+        toast.error("Offline: cannot lookup barcode while disconnected.", { id: "scan-offline" });
+        return;
+      }
       try {
         const res = await productAPI.getByBarcode(code);
         addToCart(res.data.data.product);
@@ -336,7 +349,7 @@ export default function Billing() {
 
   // ── Customer lookup ────────────────────────────────────────────────────────
   const lookupCustomer = async (phone) => {
-    const p = String(phone || "").trim();
+    const p = cleanPhone(phone);
     if (p.length < 6) return;
     setLookingUp(true);
     try {
@@ -352,19 +365,24 @@ export default function Billing() {
   };
 
   // ── Held bills ─────────────────────────────────────────────────────────────
-  const loadHeld = useCallback(async () => {
+  const loadHeld = useCallback(async (page = 1) => {
     try {
-      const r = await billAPI.getHeld();
-      setHeld(r.data.data.held);
+      const r = await billAPI.getHeld({ page });
+      const data = r.data.data;
+      setHeld(data.held);
+      setHeldTotal(data.total);
+      setHeldPage(data.page);
+      setHeldPages(data.pages);
     } catch {
       /* ignore */
     }
   }, []);
   useEffect(() => {
-    loadHeld();
+    loadHeld(1);
   }, [loadHeld]);
 
   const holdCurrent = async () => {
+    if (!online) return toast.error("Cannot hold bill while offline: connection to server is required.", { id: "hold-offline" });
     if (!cart.length) return toast.error("Cart is empty");
     try {
       await billAPI.hold({
@@ -375,7 +393,7 @@ export default function Billing() {
       if (heldId) await billAPI.deleteHeld(heldId).catch(() => {});
       toast.success("Bill put on hold");
       resetSale();
-      loadHeld();
+      loadHeld(1);
     } catch (err) {
       toast.error(getErrorMessage(err));
     }
@@ -433,6 +451,7 @@ export default function Billing() {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const submitBill = async () => {
+    if (!online) return toast.error("Counter Paused: Cannot submit sale while offline. Connection to server is required.", { id: "offline-submit-blocked" });
     if (!cart.length || submitting) return;
 
     // A shortfall is only ever a credit sale when the cashier has ticked the box. The
@@ -441,8 +460,23 @@ export default function Billing() {
       setCartOpen(false);
       return toast.error(`Short by ${formatCurrency(due)} — collect the full amount, or tick "Put the balance on credit".`);
     }
-    if (due > 0 && !custPhone.trim() && !customer) {
+    const cleanedPhone = cleanPhone(custPhone);
+    if (cleanedPhone && !isValidPhone(cleanedPhone)) {
+      return toast.error("Enter a valid 10-digit mobile number for the customer");
+    }
+    if (due > 0 && !cleanedPhone && !customer) {
       return toast.error("Enter the customer's phone number for a credit / due sale");
+    }
+    if (due > 0 && customer && customer.creditLimit !== null && customer.creditLimit !== undefined) {
+      const custLimit = num(customer.creditLimit);
+      const newDue = num(customer.balance) + due;
+      if (custLimit <= 0 && newDue > 0) {
+        return toast.error(`Credit sale not allowed for ${customer.name} (Credit limit is ₹0.00). Only owners & managers can grant credit limits.`);
+      }
+      if (newDue > custLimit) {
+        const room = Math.max(0, custLimit - num(customer.balance));
+        return toast.error(`Credit limit exceeded for ${customer.name}. Limit is ${formatCurrency(custLimit)}, already due ${formatCurrency(customer.balance)} — only ${formatCurrency(room)} more can go on credit.`);
+      }
     }
 
     setSubmitting(true);
@@ -454,7 +488,7 @@ export default function Billing() {
         items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity, discount: num(i.discount) })),
         customerId: customer?.id,
         customerName: custName || undefined,
-        customerPhone: custPhone.trim() || undefined,
+        customerPhone: cleanedPhone || undefined,
         customerGstNumber: checkout.customerGst?.trim() || undefined,
         discountAmount: checkout.discountType === "amount" ? num(checkout.discountValue) : 0,
         discountPercent: checkout.discountType === "percent" ? num(checkout.discountValue) : 0,
@@ -491,6 +525,7 @@ export default function Billing() {
   };
 
   const openCheckout = () => {
+    if (!online) return toast.error("Counter Paused: Selling is stopped while offline. Connection to server is required.", { id: "offline-selling-paused" });
     if (!cart.length) return;
     setCartOpen(false);
     setCheckout((c) => ({ ...c, method: methods.includes(c.method) ? c.method : methods[0] }));
@@ -499,7 +534,7 @@ export default function Billing() {
 
   // ── Keyboard: USB scanner (typing outside inputs) + shortcuts ─────────────
   const handlersRef = useRef({});
-  handlersRef.current = { handleScan, openCheckout, holdCurrent, submitBill, checkoutOpen };
+  handlersRef.current = { handleScan, openCheckout, holdCurrent, submitBill, checkoutOpen, online };
   useEffect(() => {
     const onKey = (e) => {
       const h = handlersRef.current;
@@ -510,11 +545,19 @@ export default function Billing() {
       }
       if (e.key === "F4") {
         e.preventDefault();
+        if (!h.online) {
+          toast.error("Cannot hold bill while offline: connection to server is required.", { id: "hold-offline" });
+          return;
+        }
         h.holdCurrent();
         return;
       }
       if (e.key === "F9" || e.key === "F12") {
         e.preventDefault();
+        if (!h.online) {
+          toast.error("Counter Paused: Cannot checkout while offline. Billing will resume once connection is restored.", { id: "offline-checkout-blocked" });
+          return;
+        }
         if (h.checkoutOpen) h.submitBill();
         else h.openCheckout();
         return;
@@ -548,6 +591,20 @@ export default function Billing() {
     <div className="billing-layout">
       {/* ── Left panel ── */}
       <div className="billing-main">
+        {!online && (
+          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px", background: "var(--danger-light)", border: "1px solid var(--danger)", borderRadius: 10, marginBottom: 16, color: "var(--danger)", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <WifiOff size={18} style={{ flexShrink: 0 }} />
+              <div>
+                <strong style={{ fontSize: 13.5, display: "block" }}>Counter Paused — Offline</strong>
+                <span style={{ fontSize: 12.5, opacity: 0.9 }}>Unable to reach the billing server. Selling is stopped to protect stock levels &amp; sequential invoice numbering. Scanned cart items are preserved.</span>
+              </div>
+            </div>
+            <button onClick={recheck} disabled={isChecking} className="btn-ghost" style={{ padding: "6px 12px", borderColor: "var(--danger)", color: "var(--danger)", background: "var(--bg-card)", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 500 }}>
+              <RefreshCw size={13} className={isChecking ? "spin" : ""} /> {isChecking ? "Checking..." : "Retry Connection"}
+            </button>
+          </div>
+        )}
         <div className="section-head" style={{ marginBottom: 0 }}>
           <div style={{ minWidth: 0 }}>
             <h1 style={{ fontFamily: "'Fraunces','Playfair Display',serif", fontSize: "clamp(21px, 4.5vw, 26px)", fontWeight: 300, color: "var(--text-primary)" }}>
@@ -574,8 +631,8 @@ export default function Billing() {
                 </span>
               </button>
             )}
-            <button className="btn-ghost" onClick={() => setHeldOpen(true)}>
-              <PlayCircle size={14} /> Held ({held.length})
+            <button className="btn-ghost" onClick={() => { setHeldOpen(true); loadHeld(heldPage); }}>
+              <PlayCircle size={14} /> Held ({heldTotal})
             </button>
             <button
               onClick={() => setShowCamera(!showCamera)}
@@ -670,7 +727,7 @@ export default function Billing() {
                 placeholder="Phone number"
                 value={custPhone}
                 onChange={(e) => {
-                  setCustPhone(e.target.value);
+                  setCustPhone(cleanPhone(e.target.value));
                   setCustomer(null);
                 }}
                 onBlur={() => lookupCustomer(custPhone)}
@@ -692,6 +749,13 @@ export default function Billing() {
               )}
               {num(customer.balance) > 0 && <span style={{ color: "var(--danger)" }}>Due {formatCurrency(customer.balance)}</span>}
               {num(customer.balance) < 0 && <span style={{ color: "var(--success)" }}>Advance {formatCurrency(-num(customer.balance))}</span>}
+              {customer.creditLimit === null ? (
+                <span style={{ color: "var(--accent)" }}>Credit: Unlimited</span>
+              ) : num(customer.creditLimit) > 0 ? (
+                <span>Credit limit: {formatCurrency(customer.creditLimit)}</span>
+              ) : (
+                <span style={{ color: "var(--text-muted)" }}>Credit: ₹0.00</span>
+              )}
             </div>
           ) : (
             custPhone.trim().length >= 6 &&
@@ -740,7 +804,7 @@ export default function Billing() {
         <button className="btn-ghost" style={{ flexShrink: 0 }} onClick={() => setCartOpen(true)} disabled={!cart.length}>
           View
         </button>
-        <button className="btn-primary" style={{ flexShrink: 0 }} onClick={openCheckout} disabled={!cart.length}>
+        <button className="btn-primary" style={{ flexShrink: 0, opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }} onClick={openCheckout} disabled={!cart.length || !online}>
           <Receipt size={14} /> Pay
         </button>
       </div>
@@ -764,7 +828,7 @@ export default function Billing() {
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
             {cart.length > 0 && (
               <>
-                <button onClick={holdCurrent} style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                <button onClick={holdCurrent} disabled={!online} style={{ fontSize: 12, color: !online ? "var(--text-muted)" : "var(--text-secondary)", opacity: !online ? 0.5 : 1, background: "none", border: "none", cursor: !online ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 4 }} title={!online ? "Cannot hold bill while offline" : "Hold current bill"}>
                   <PauseCircle size={13} /> Hold
                 </button>
                 <button
@@ -821,8 +885,8 @@ export default function Billing() {
                 <span style={{ ...mono, color: "var(--accent-dark)" }}>{formatCurrency(calc.totalAmount)}</span>
               </div>
             </div>
-            <button onClick={openCheckout} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14 }}>
-              <Receipt size={15} /> Checkout (F9)
+            <button onClick={openCheckout} disabled={!cart.length || !online} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14, opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
+              {online ? <><Receipt size={15} /> Checkout (F9)</> : <><WifiOff size={15} /> Selling Paused (Offline)</>}
             </button>
           </div>
         )}
@@ -831,12 +895,19 @@ export default function Billing() {
       {/* ── Checkout modal ── */}
       <Modal isOpen={checkoutOpen} onClose={() => setCheckoutOpen(false)} title="Complete sale" maxWidth={520}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {!online && (
+            <div style={{ background: "var(--danger-light)", color: "var(--danger)", padding: "10px 14px", borderRadius: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+              <WifiOff size={16} style={{ flexShrink: 0 }} />
+              <span>Connection lost. Selling is paused until the server reconnects. Scanned cart items remain safe.</span>
+            </div>
+          )}
           <div className="card-sunken" style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 {cart.length} items · {custName || custPhone || "Walk-in customer"}
               </p>
               <p style={{ fontSize: 26, fontWeight: 600, color: "var(--accent-dark)", ...mono }}>{formatCurrency(calc.totalAmount)}</p>
+              <p style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic", marginTop: 2 }}>{amountToWords(calc.totalAmount)}</p>
             </div>
             {(calc.billDiscount > 0 || calc.loyaltyDiscount > 0) && (
               <div style={{ textAlign: "right", fontSize: 12, color: "var(--success)" }}>
@@ -1033,8 +1104,8 @@ export default function Billing() {
             <button onClick={() => setCheckoutOpen(false)} className="btn-ghost" style={{ flex: 1, justifyContent: "center" }}>
               Back
             </button>
-            <button onClick={submitBill} disabled={submitting} className="btn-primary" style={{ flex: 2, justifyContent: "center", padding: "11px" }}>
-              {submitting ? <Spinner size={14} color="var(--bg)" /> : <CheckCircle size={15} />} Confirm sale (F9)
+            <button onClick={submitBill} disabled={submitting || !online} className="btn-primary" style={{ flex: 2, justifyContent: "center", padding: "11px", opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
+              {submitting ? <Spinner size={14} color="var(--bg)" /> : !online ? <><WifiOff size={15} /> Offline — Selling Paused</> : <><CheckCircle size={15} /> Confirm sale (F9)</>}
             </button>
           </div>
         </div>
@@ -1042,10 +1113,12 @@ export default function Billing() {
 
       {/* ── Held bills ── */}
       <Modal isOpen={heldOpen} onClose={() => setHeldOpen(false)} title="Held bills" maxWidth={460}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>Held bills expire automatically after 7 days.</p>
         {held.length === 0 ? (
           <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: 20 }}>No bills on hold</p>
         ) : (
-          held.map((h) => {
+          <>
+          {held.map((h) => {
             const total = (h.cart || []).reduce((s, i) => s + num(i.price) * num(i.quantity) - num(i.discount), 0);
             return (
               <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
@@ -1064,14 +1137,22 @@ export default function Billing() {
                   aria-label="Delete held bill"
                   onClick={async () => {
                     await billAPI.deleteHeld(h.id).catch(() => {});
-                    loadHeld();
+                    loadHeld(heldPage);
                   }}
                 >
                   <X size={13} />
                 </button>
               </div>
             );
-          })
+          })}
+          {heldPages > 1 && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12 }}>
+              <button className="btn-ghost" disabled={heldPage <= 1} onClick={() => loadHeld(heldPage - 1)}>Previous</button>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Page {heldPage} of {heldPages}</span>
+              <button className="btn-ghost" disabled={heldPage >= heldPages} onClick={() => loadHeld(heldPage + 1)}>Next</button>
+            </div>
+          )}
+          </>
         )}
       </Modal>
 
@@ -1085,6 +1166,7 @@ export default function Billing() {
             <div className="card-sunken" style={{ padding: "14px 20px", width: "100%" }}>
               <p style={{ ...mono, fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{lastBill.billNumber}</p>
               <p style={{ fontSize: 24, fontWeight: 600, color: "var(--text-primary)", ...mono }}>{formatCurrency(lastBill.totalAmount)}</p>
+              <p style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic", marginTop: 2 }}>{amountToWords(lastBill.totalAmount)}</p>
               <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
                 {PAYMENT_LABELS[lastBill.paymentMethod] || lastBill.paymentMethod}
                 {num(lastBill.changeReturned) > 0 && ` · Change ${formatCurrency(lastBill.changeReturned)}`}

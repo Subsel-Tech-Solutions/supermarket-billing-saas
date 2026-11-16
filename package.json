@@ -1,1 +1,16 @@
-{"name":"supermart-pos","version":"1.0.0","scripts":{"build":"cd frontend && npm install && npm run build","start":"cd backend && node server.js"},"engines":{"node":">=18.0.0"}}
+{
+  "name": "supermart-pos",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd backend && node server.js",
+    "seed:e2e": "node backend/scripts/seed-e2e.js",
+    "reset:e2e": "node backend/scripts/reset-e2e.js",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "test:e2e:real": "npm --prefix frontend run test:e2e:real",
+    "report:combine": "npm --prefix frontend run report:combine"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

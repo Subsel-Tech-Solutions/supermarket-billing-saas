@@ -1,6 +1,6 @@
 // controllers/purchaseController.js — stock inward from suppliers (GRN / purchase bills)
 const { Op } = require("sequelize");
-const { asyncHandler, HttpError, num, str, round2, round3, pad, paging } = require("../utils/helpers");
+const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, assertPriceWithinMrp } = require("../utils/helpers");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { moveStock } = require("../utils/stock");
 
@@ -69,6 +69,11 @@ const createPurchase = asyncHandler(async (req, res) => {
       const taxRate = Math.max(0, num(it.taxRate, Number(product.taxRate)));
       const base = round2(costPrice * quantity);
       const taxAmount = round2((base * taxRate) / 100);
+      if (updatePrices) {
+        const targetMrp = it.mrp !== undefined && it.mrp !== "" ? (it.mrp === null ? null : round2(num(it.mrp))) : product.mrp;
+        const targetPrice = it.sellingPrice !== undefined && it.sellingPrice !== "" ? round2(num(it.sellingPrice)) : Number(product.price);
+        assertPriceWithinMrp(targetPrice, targetMrp, product.name);
+      }
       lines.push({ product, it, quantity, costPrice, taxRate, base, taxAmount, totalAmount: round2(base + taxAmount) });
     }
 

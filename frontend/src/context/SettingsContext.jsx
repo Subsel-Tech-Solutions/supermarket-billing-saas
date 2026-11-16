@@ -35,7 +35,7 @@ applyCachedTheme();
 export const SettingsProvider = ({ children }) => {
   const { isAuthenticated, isSuperAdmin } = useAuth();
   const [settings, setSettings] = useState(FALLBACK);
-  const [platform, setPlatform] = useState({ platformName: "SuperMart POS", allowSignup: true, trialDays: 14 });
+  const [platform, setPlatform] = useState({ platformName: "SuperMart POS", allowSignup: false, trialDays: 14 });
   const [loaded, setLoaded] = useState(false);
 
   // Public platform branding (login page etc.)

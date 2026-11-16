@@ -10,6 +10,7 @@ const getPublicSettings = asyncHandler(async (req, res) => {
       platformName: p.platformName,
       tagline: p.tagline,
       allowSignup: p.allowSignup,
+      hasInviteCode: !p.allowSignup && !!(p.signupInviteCode || process.env.SIGNUP_INVITE_CODE),
       trialDays: p.trialDays,
       supportEmail: p.supportEmail,
       supportPhone: p.supportPhone,

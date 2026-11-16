@@ -1,10 +1,15 @@
 // controllers/billingController.js — POS sales, returns, cancellations, held bills
 const { Op } = require("sequelize");
-const { asyncHandler, HttpError, num, str, round2, round3, pad, paging } = require("../utils/helpers");
+const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, normalizePhone, isValidPhone, assertPriceWithinMrp } = require("../utils/helpers");
 const { calculateBill, settlePayments } = require("../utils/billMath");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { rangeFromStrings } = require("../utils/dates");
 const { moveStock } = require("../utils/stock");
+const { logAudit } = require("../utils/auditLogger");
+const { normalizeGstin, isValidGstin, stateCodeFromGstin, stateCodeFromName, stateNameFromCode } = require("../utils/gst");
+
+const HELD_BILL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const HELD_BILL_PAGE_SIZE = 50;
 
 const fullBillInclude = (db) => [
   { model: db.BillItem, as: "items" },
@@ -67,7 +72,13 @@ const createBill = asyncHandler(async (req, res) => {
 
     // 2) Customer (by id or phone — created automatically when a phone is given)
     let customer = null;
-    const phone = str(body.customerPhone, 20);
+    let phone = null;
+    if (body.customerPhone) {
+      phone = normalizePhone(body.customerPhone);
+      if (!isValidPhone(body.customerPhone)) {
+        throw new HttpError(400, "Enter a valid 10-digit mobile number for the customer");
+      }
+    }
     if (body.customerId) {
       customer = await db.Customer.findByPk(body.customerId, { transaction: t, lock: t.LOCK.UPDATE });
       // A stale customer id (deleted on another till) must not silently become a walk-in
@@ -85,13 +96,29 @@ const createBill = asyncHandler(async (req, res) => {
     }
 
     // 3) Discounts
-    const lines = products.map(({ product, item }) => ({
+    const lines = products.map(({ product, item }) => {
+      const price = Number(product.price);
+      if (product.mrp && Number(product.mrp) > 0) {
+        const mrp = Number(product.mrp);
+        const effectiveUnitRate = settings.pricesIncludeTax || !settings.taxEnabled
+          ? price
+          : round2(price * (1 + (Number(product.taxRate) || 0) / 100));
+        if (effectiveUnitRate > mrp + 0.001) {
+          throw new HttpError(
+            400,
+            `Cannot bill "${product.name}" at ₹${effectiveUnitRate.toFixed(2)}${settings.pricesIncludeTax ? "" : " (including tax)"} — exceeds MRP of ₹${mrp.toFixed(2)}.`,
+            "PRICE_EXCEEDS_MRP",
+          );
+        }
+      }
+      return {
       product,
       price: Number(product.price),
       quantity: item.quantity,
       discount: item.discount,
       taxRate: Number(product.taxRate) || 0,
-    }));
+      };
+    });
     const preview = calculateBill(lines, { pricesIncludeTax: settings.pricesIncludeTax, taxEnabled: settings.taxEnabled, roundOff: false });
     const netAfterItems = round2(preview.subtotal - preview.itemDiscount);
     let billDiscount = round2(num(body.discountAmount));
@@ -111,14 +138,22 @@ const createBill = asyncHandler(async (req, res) => {
     }
 
     // ── Place of supply (GST) ────────────────────────────────────────────────
-    // Over-the-counter retail is intra-state, so CGST+SGST is the default. A bill
-    // raised against a GSTIN from another state is inter-state and carries IGST.
-    const customerGst = str(body.customerGstNumber, 20) || (customer ? customer.gstNumber : null);
-    const placeOfSupply = str(body.placeOfSupply, 60) || settings.state || null;
-    const homeState = String(settings.state || "").trim().toLowerCase();
-    const interState =
-      body.interState === true ||
-      (!!placeOfSupply && !!homeState && String(placeOfSupply).trim().toLowerCase() !== homeState);
+    // A registered customer's GSTIN provides a validated, machine-readable state
+    // code. The shop's GSTIN is authoritative; the saved state name is a fallback
+    // for older shops that have not entered a GSTIN yet. Client flags and text
+    // place-of-supply values are deliberately ignored.
+    const suppliedCustomerGst = str(body.customerGstNumber, 20);
+    const customerGst = normalizeGstin(suppliedCustomerGst || (customer ? customer.gstNumber : "")) || null;
+    if (customerGst && !isValidGstin(customerGst)) {
+      throw new HttpError(400, "Enter a valid 15-character customer GSTIN");
+    }
+    const customerStateCode = customerGst ? stateCodeFromGstin(customerGst) : null;
+    const homeStateCode = stateCodeFromGstin(settings.gstNumber) || stateCodeFromName(settings.state);
+    if (customerStateCode && !homeStateCode) {
+      throw new HttpError(400, "Set the shop's state or a valid shop GSTIN before billing a GST-registered customer");
+    }
+    const interState = !!(customerStateCode && homeStateCode && customerStateCode !== homeStateCode);
+    const placeOfSupply = stateNameFromCode(customerStateCode || homeStateCode) || settings.state || null;
 
     const calc = calculateBill(lines, {
       billDiscount,
@@ -141,15 +176,32 @@ const createBill = asyncHandler(async (req, res) => {
       // Even with the setting off, a due needs *someone* to chase. A nameless, phoneless
       // udhaar entry is money written off at the moment the bill is saved.
       if (!customer && !phone) throw new HttpError(400, "A credit (due) sale needs at least a customer phone number");
-      if (customer && Number(customer.creditLimit) > 0 && Number(customer.balance) + pay.due > Number(customer.creditLimit)) {
-        const room = round2(Math.max(0, Number(customer.creditLimit) - Number(customer.balance)));
-        throw new HttpError(
-          400,
-          `Credit limit exceeded for ${customer.name}. Limit ${Number(customer.creditLimit).toFixed(2)}, already due ${Number(
-            customer.balance,
-          ).toFixed(2)} — only ${room.toFixed(2)} more can go on account.`,
-          "CREDIT_LIMIT",
-        );
+      if (customer) {
+        const hasExplicitLimit = customer.creditLimit !== null && customer.creditLimit !== undefined;
+        if (hasExplicitLimit) {
+          const limit = round2(num(customer.creditLimit));
+          const currentDue = round2(num(customer.balance));
+          const newTotalDue = round2(currentDue + pay.due);
+
+          if (limit <= 0) {
+            if (newTotalDue > 0) {
+              throw new HttpError(
+                400,
+                `Credit sales are not allowed for ${customer.name} (Credit limit is ₹0.00). Only store owners and managers can grant credit limits.`,
+                "CREDIT_NOT_ALLOWED",
+              );
+            }
+          } else if (newTotalDue > limit) {
+            const room = round2(Math.max(0, limit - currentDue));
+            throw new HttpError(
+              400,
+              `Credit limit exceeded for ${customer.name}. Limit ${limit.toFixed(2)}, already due ${currentDue.toFixed(
+                2,
+              )} — only ${room.toFixed(2)} more can go on account.`,
+              "CREDIT_LIMIT",
+            );
+          }
+        }
       }
     }
 
@@ -234,6 +286,26 @@ const createBill = asyncHandler(async (req, res) => {
     if (body.heldBillId) await db.HeldBill.destroy({ where: { id: body.heldBillId }, transaction: t });
 
     await t.commit();
+    if (calc.billDiscount > 0 || calc.itemDiscount > 0) {
+      await logAudit(req, {
+        action: "DISCOUNT_APPLIED",
+        entityType: "bill",
+        entityId: bill.billNumber,
+        details: {
+          billId: bill.id,
+          billNumber: bill.billNumber,
+          customerName: bill.customerName,
+          totalAmount: calc.totalAmount,
+        },
+        diff: {
+          subtotal: calc.subtotal,
+          billDiscount: calc.billDiscount,
+          itemDiscount: calc.itemDiscount,
+          totalDiscount: round2(calc.billDiscount + calc.itemDiscount),
+        },
+      });
+    }
+
     const fullBill = await db.Bill.findByPk(bill.id, { include: fullBillInclude(db) });
     res.status(201).json({ success: true, message: "Bill created successfully", data: { bill: fullBill } });
   } catch (err) {
@@ -295,8 +367,14 @@ const getBills = asyncHandler(async (req, res) => {
     if (end) where.createdAt[Op.lte] = end;
   }
   if (search) {
-    const q = `%${String(search).trim()}%`;
-    where[Op.or] = [{ billNumber: { [Op.like]: q } }, { customerName: { [Op.like]: q } }, { customerPhone: { [Op.like]: q } }];
+    const qStr = String(search).trim();
+    const q = `%${qStr}%`;
+    const digitsOnly = normalizePhone(qStr);
+    const orConds = [{ billNumber: { [Op.like]: q } }, { customerName: { [Op.like]: q } }, { customerPhone: { [Op.like]: q } }];
+    if (digitsOnly && digitsOnly !== qStr) {
+      orConds.push({ customerPhone: { [Op.like]: `%${digitsOnly}%` } });
+    }
+    where[Op.or] = orConds;
   }
 
   const { count, rows } = await db.Bill.findAndCountAll({
@@ -367,6 +445,22 @@ const cancelBill = asyncHandler(async (req, res) => {
     bill.notes = [bill.notes, `Cancelled by ${req.user.username}${reason ? `: ${reason}` : ""}`].filter(Boolean).join("\n");
     await bill.save({ transaction: t });
     await t.commit();
+    await logAudit(req, {
+      action: "BILL_CANCELLED",
+      entityType: "bill",
+      entityId: bill.billNumber,
+      details: {
+        billId: bill.id,
+        billNumber: bill.billNumber,
+        customerName: bill.customerName,
+        totalAmount: Number(bill.totalAmount) || 0,
+        reason: reason || "No reason specified",
+      },
+      diff: {
+        status: { from: "completed", to: "cancelled" },
+      },
+    });
+
     res.json({ success: true, message: "Bill cancelled and stock restored" });
   } catch (err) {
     if (!t.finished) await t.rollback();
@@ -456,6 +550,24 @@ const returnBill = asyncHandler(async (req, res) => {
     }
 
     await t.commit();
+    await logAudit(req, {
+      action: "BILL_RETURN",
+      entityType: "bill",
+      entityId: bill.billNumber,
+      details: {
+        billId: bill.id,
+        billNumber: bill.billNumber,
+        returnNumber,
+        refundAmount: total,
+        refundMethod,
+        reason: str(body.reason, 255) || "No reason specified",
+      },
+      diff: {
+        status: { to: fullyReturned ? "returned" : "partially_returned" },
+        returnedAmount: { to: Number(bill.returnedAmount) },
+      },
+    });
+
     const updated = await db.Bill.findByPk(bill.id, { include: fullBillInclude(db) });
     res.status(201).json({ success: true, message: `Return ${returnNumber} saved — refund ${total.toFixed(2)}`, data: { bill: updated, returnNumber, amount: total } });
   } catch (err) {
@@ -489,11 +601,23 @@ const getReturns = asyncHandler(async (req, res) => {
 
 // ── Held (parked) bills ──────────────────────────────────────────────────────
 const getHeldBills = asyncHandler(async (req, res) => {
-  const rows = await req.db.HeldBill.findAll({ order: [["createdAt", "DESC"]], limit: 50 });
-  res.json({ success: true, data: { held: rows } });
+  const db = req.db;
+  const cutoff = new Date(Date.now() - HELD_BILL_TTL_MS);
+  await db.HeldBill.destroy({ where: { createdAt: { [Op.lt]: cutoff } } });
+
+  const total = await db.HeldBill.count();
+  const pages = Math.max(1, Math.ceil(total / HELD_BILL_PAGE_SIZE));
+  const page = Math.min(pages, Math.max(1, parseInt(req.query.page, 10) || 1));
+  const rows = await db.HeldBill.findAll({
+    order: [["createdAt", "DESC"]],
+    limit: HELD_BILL_PAGE_SIZE,
+    offset: (page - 1) * HELD_BILL_PAGE_SIZE,
+  });
+  res.json({ success: true, data: { held: rows, total, page, pages, expiresAfterDays: 7 } });
 });
 
 const holdBill = asyncHandler(async (req, res) => {
+  await req.db.HeldBill.destroy({ where: { createdAt: { [Op.lt]: new Date(Date.now() - HELD_BILL_TTL_MS) } } });
   const cart = Array.isArray(req.body?.cart) ? req.body.cart.slice(0, 300) : [];
   if (!cart.length) throw new HttpError(400, "Cart is empty");
   const held = await req.db.HeldBill.create({

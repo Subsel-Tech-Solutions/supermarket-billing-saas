@@ -1083,10 +1083,16 @@ function PlatformSettings({ only = "settings" }) {
       {showSelling && card(
         "Signups & trial",
         <>
-          <Toggle label="Allow public signups" description="When off, only you can create businesses" checked={!!form.allowSignup} onChange={(v) => set("allowSignup", v)} />
+          <Toggle label="Allow public signups" description="When off, only you or invite-code holders can create businesses" checked={!!form.allowSignup} onChange={(v) => set("allowSignup", v)} />
           <Grid cols={3} style={{ marginTop: 10 }}>
             <Field label="Free trial days">
               <input className="input-field" type="number" min={1} max={365} value={form.trialDays} onChange={(e) => set("trialDays", e.target.value)} />
+            </Field>
+            <Field label="Signup invite code (optional)" hint="Allows signups even when public registration is OFF">
+              <input className="input-field" placeholder="e.g. VIP2026" value={form.signupInviteCode || ""} onChange={(e) => set("signupInviteCode", e.target.value)} />
+            </Field>
+            <Field label="Max business DBs (quota cap)" hint="Prevents DoS & connection exhaustion">
+              <input className="input-field" type="number" min={1} max={1000} value={form.maxTenants || 100} onChange={(e) => set("maxTenants", e.target.value)} />
             </Field>
           </Grid>
         </>,

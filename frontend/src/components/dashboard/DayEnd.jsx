@@ -47,7 +47,7 @@ export default function DayEnd() {
       <h2>${escapeHtml(settings.businessName)}</h2><div style="text-align:center">Day closing — ${escapeHtml(formatDate(data.date))}</div><hr>
       <table>${row("Bills", data.sales.bills)}${row("Net sales", formatCurrency(data.sales.revenue))}${row("Cancelled bills", data.cancelledBills)}</table><hr>
       <table>${data.payments.map((p) => row(PAYMENT_LABELS[p.method] || p.method, formatCurrency(p.amount))).join("")}</table><hr>
-      <table>${row("Cash sales", formatCurrency(data.cash.sales))}${row("+ Dues collected (cash)", formatCurrency(data.cash.collected))}${row("− Expenses (cash)", formatCurrency(data.cash.expenses))}${row("− Refunds (cash)", formatCurrency(data.cash.refunds))}${row("− Paid to suppliers (cash)", formatCurrency(data.cash.suppliers))}${row("Expected in drawer", formatCurrency(expected))}${counted ? row("Counted", formatCurrency(counted)) + row("Difference", formatCurrency(diff)) : ""}</table><hr>
+      <table>${row("Cash sales", formatCurrency(data.cash.sales))}${row("+ Dues collected (cash)", formatCurrency(data.cash.collected))}${row("− Expenses (cash)", formatCurrency(data.cash.expenses))}${row("− Refunds (cash)", formatCurrency(data.cash.refunds))}${row("− Cancelled bills (cash)", formatCurrency(data.cash.cancellations))}${row("− Paid to suppliers (cash)", formatCurrency(data.cash.suppliers))}${row("Expected in drawer", formatCurrency(expected))}${counted ? row("Counted", formatCurrency(counted)) + row("Difference", formatCurrency(diff)) : ""}</table><hr>
       <div style="margin-top:30px">Signature: ____________</div>
       </body></html>`);
     if (!ok) toast.error("Could not open the print dialog");
@@ -95,6 +95,7 @@ export default function DayEnd() {
                 ["Dues collected in cash", data.cash.collected, "+"],
                 ["Expenses paid in cash", data.cash.expenses, "−"],
                 ["Refunds in cash", data.cash.refunds, "−"],
+                ["Cancelled bills refunded in cash", data.cash.cancellations, "−"],
                 ["Paid to suppliers in cash", data.cash.suppliers, "−"],
               ].map(([l, v, s]) => (
                 <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, color: "var(--text-secondary)" }}>

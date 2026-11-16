@@ -15,5 +15,6 @@ router.get("/profit", allow("owner"), c.getProfitReport);
 router.get("/staff", managers, c.getStaffReport);
 router.get("/stock", managers, c.getStockReport);
 router.get("/expiry", managers, c.getExpiryReport);
+router.get("/audit-logs", managers, c.getAuditLogs);
 
 module.exports = router;

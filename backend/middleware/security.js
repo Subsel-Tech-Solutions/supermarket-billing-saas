@@ -83,6 +83,13 @@ const signupLimiter = rateLimit({
   message: "Too many sign-ups from this network. Please try again later.",
 });
 
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: parseInt(process.env.PASSWORD_RESET_RATE_LIMIT || "5", 10),
+  message: "Too many password reset requests. Please try again later.",
+  keyFn: (req) => `${clientKey(req)}|${String(req.body?.email || "").toLowerCase().slice(0, 120)}`,
+});
+
 // Generous ceiling for the authenticated API — a busy till does many requests a minute.
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -91,4 +98,4 @@ const apiLimiter = rateLimit({
 
 const resetRateLimits = () => buckets.clear();
 
-module.exports = { securityHeaders, rateLimit, loginLimiter, signupLimiter, apiLimiter, resetRateLimits };
+module.exports = { securityHeaders, rateLimit, loginLimiter, signupLimiter, passwordResetLimiter, apiLimiter, resetRateLimits };

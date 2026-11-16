@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { productAPI } from "../../services/api";
-import { numericOnly, blockNonNumericKeys } from "../../utils/helpers";
+import { numericOnly, blockNonNumericKeys, escapeHtml } from "../../utils/helpers";
 
 function useJsBarcode() {
   const [ready, setReady] = useState(!!window.JsBarcode);
@@ -218,6 +218,10 @@ export default function BarcodeGenerator() {
       toast.error("Barcode required");
       return;
     }
+    if (form.mrp && parseFloat(form.price) > parseFloat(form.mrp)) {
+      toast.error(`Selling price (₹${form.price}) cannot exceed MRP (₹${form.mrp})`);
+      return;
+    }
     setSaving(true);
     try {
       await productAPI.scan({
@@ -250,6 +254,10 @@ export default function BarcodeGenerator() {
     }
     if (!form.price) {
       toast.error("Sell price required");
+      return;
+    }
+    if (form.mrp && parseFloat(form.price) > parseFloat(form.mrp)) {
+      toast.error(`Selling price (₹${form.price}) cannot exceed MRP (₹${form.mrp})`);
       return;
     }
     const newLabels = Array.from({ length: parseInt(copies) || 1 }, () => ({
@@ -287,11 +295,11 @@ export default function BarcodeGenerator() {
       .map(
         (label, i) => `
       <div class="label-card">
-        <div class="product-name">${label.name || ""}</div>
-        <div class="barcode-area">${svgMap[i] || ""}</div>
+        <div class="product-name">${escapeHtml(label.name || "")}</div>
+        <div class="barcode-area">${(svgMap[i] || "").replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "").replace(/\s+on\w+\s*=\s*(['"]).*?\1/gi, "")}</div>
         <div class="price-row">
-          ${label.mrp ? `<span style="font-weight:800;font-size:13px;color:#888;">MRP <span class="mrp">₹${label.mrp}</span></span>` : `<span></span>`}
-          <span class="price">₹${label.price || ""}</span>
+          ${label.mrp ? `<span style="font-weight:800;font-size:13px;color:#888;">MRP <span class="mrp">₹${escapeHtml(label.mrp)}</span></span>` : `<span></span>`}
+          <span class="price">₹${escapeHtml(label.price || "")}</span>
         </div>
       </div>`,
       )

@@ -10,6 +10,8 @@ import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { PageLoader } from "./components/shared/UI";
 
 const Login = lazy(() => import("./components/auth/Login"));
+const ForgotPassword = lazy(() => import("./components/auth/ForgotPassword"));
+const ResetPassword = lazy(() => import("./components/auth/ResetPassword"));
 const Signup = lazy(() => import("./components/auth/Signup"));
 const Dashboard = lazy(() => import("./components/dashboard/Dashboard"));
 const Reports = lazy(() => import("./components/dashboard/Reports"));
@@ -85,6 +87,8 @@ export default function App() {
           <Suspense fallback={<Fallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/signup" element={<Signup />} />
               <Route
                 path="/"

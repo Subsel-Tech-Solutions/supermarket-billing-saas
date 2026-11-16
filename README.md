@@ -69,8 +69,12 @@ npm install
 npm start                   # http://localhost:3000  (proxies /api to :5000)
 ```
 
-Login: `admin@supermarket.com` / `admin123` (change it in Settings → My Account).
-New businesses can sign up at `/signup` (turn off in Admin → Settings).
+Login: `admin@supermarket.com` / password set via `ADMIN_PASSWORD` in `.env`
+(defaults to `admin123` for **local development only** — the server **refuses to start**
+in production unless you set a strong, unique `ADMIN_PASSWORD` of at least 8 characters).
+Public sign-ups are closed by default. Enable them in Admin → Settings or set
+`ALLOW_PUBLIC_SIGNUP=true`; when public sign-ups are closed, only valid invite-code holders
+can register at `/signup`.
 
 ## Moving data from the old version
 
@@ -94,6 +98,12 @@ Re-running is safe (shops that already have products are skipped; `--force` to o
 * Frontend on a different domain: build with `REACT_APP_API_URL=https://api.yourdomain.com/api`
   and set `CORS_ORIGIN` on the backend.
 
+Self-service password reset emails use Resend. Set `RESEND_API_KEY`, a verified `EMAIL_FROM`
+sender address, and `FRONTEND_URL` (the public frontend origin, with no trailing slash) in the
+backend environment. Reset links expire after 30 minutes and can only be used once. Until email
+delivery is configured, the reset endpoint returns a setup error and users can still ask an owner
+or platform administrator to reset their password.
+
 After upgrading the code later (new columns), start once with `DB_SYNC_ALTER=true`, then set it back to `false`.
 
 > **Upgrading an existing install to this version:** you must do that `DB_SYNC_ALTER=true` start once.
@@ -109,8 +119,8 @@ client — the bundled `frontend/nginx.conf` already sets the header correctly.
 ### Security
 
 * `JWT_SECRET` is checked at startup: at least 32 characters, and not the example value in production.
-* Login, sign-up and password-change are rate limited per IP **and** per email (`LOGIN_RATE_LIMIT`,
-  `SIGNUP_RATE_LIMIT`, `API_RATE_LIMIT`). The counters are per process, so set them per instance.
+* Login, sign-up, and password reset are rate limited per IP and email (`LOGIN_RATE_LIMIT`,
+  `SIGNUP_RATE_LIMIT`, `PASSWORD_RESET_RATE_LIMIT`, `API_RATE_LIMIT`). The counters are per process, so set them per instance.
 * The platform-admin account cannot be edited by a shop owner, even when it lives in their shop.
 * `POST /api/admin/shops/:id/login-as` (support access) writes an `[AUDIT]` line to the server log.
 

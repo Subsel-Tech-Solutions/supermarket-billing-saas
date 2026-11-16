@@ -1,16 +1,29 @@
 {
   "name": "supermarket-backend",
   "version": "1.0.0",
-  "description": "SuperMart POS \u2014 multi-business SaaS backend (database per business)",
+  "description": "SuperMart POS — multi-business SaaS backend (database per business)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate:legacy": "node scripts/migrate-legacy.js",
-    "test": "node tests/billMath.test.js"
+    "cleanup:trials": "node scripts/cleanup-trials.js",
+    "test": "node tests/billMath.test.js && node tests/authSecurity.test.js && node tests/phoneValidation.test.js && node tests/creditSecurity.test.js && node tests/signupSecurity.test.js && node tests/xssSecurity.test.js && node tests/invoicePdf.test.js && node tests/dayEndCancellation.test.js && node tests/mrpCompliance.test.js && node tests/numberToWords.test.js && node tests/corsSecurity.test.js && node tests/poolProtection.test.js && node tests/auditLog.test.js && node tests/loyaltyReturnsAndCredit.test.js"
   },
   "dependencies": {
+    "@fontsource/anek-gurmukhi": "5.3.0",
+    "@fontsource/noto-sans-arabic": "5.3.0",
+    "@fontsource/noto-sans-bengali": "5.3.0",
+    "@fontsource/noto-sans-devanagari": "5.3.0",
+    "@fontsource/noto-sans-gujarati": "5.3.0",
+    "@fontsource/noto-sans-kannada": "5.3.0",
+    "@fontsource/noto-sans-malayalam": "5.3.0",
+    "@fontsource/noto-sans-meetei-mayek": "5.3.0",
+    "@fontsource/noto-sans-oriya": "5.3.0",
+    "@fontsource/noto-sans-tamil": "5.3.0",
+    "@fontsource/noto-sans-telugu": "5.3.0",
     "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.18.2",
