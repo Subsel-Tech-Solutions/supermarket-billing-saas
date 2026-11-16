@@ -6,7 +6,15 @@
 // Every business gets its OWN MySQL database, so data is physically separated.
 // ─────────────────────────────────────────────────────────────────────────────
 const { Sequelize } = require("sequelize");
-require("dotenv").config();
+const path = require("path");
+const fs = require("fs");
+
+const e2eEnvPath = path.resolve(__dirname, "../.env.e2e.local");
+if (process.env.E2E_MODE === "true" && fs.existsSync(e2eEnvPath)) {
+  require("dotenv").config({ path: e2eEnvPath, override: true });
+} else {
+  require("dotenv").config();
+}
 
 const baseOptions = () => ({
   host: process.env.DB_HOST || "localhost",
@@ -39,6 +47,13 @@ const SAFE_DB_NAME = /^[a-zA-Z0-9_]{1,64}$/;
 const assertSafeDbName = (name) => {
   if (!SAFE_DB_NAME.test(name || "")) {
     throw new Error(`Unsafe database name: ${name}`);
+  }
+  if (process.env.E2E_MODE === "true") {
+    const isTestMaster = name === "supermart_test_master";
+    const isTestTenant = name.startsWith(process.env.TENANT_DB_PREFIX || "sm_test_shop_");
+    if (!isTestMaster && !isTestTenant) {
+      throw new Error(`[SECURITY] E2E mode only allows creating supermart_test_master and sm_test_shop_* databases. Blocked: ${name}`);
+    }
   }
 };
 

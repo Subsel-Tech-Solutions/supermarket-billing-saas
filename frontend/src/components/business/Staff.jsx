@@ -27,10 +27,12 @@ export default function Staff() {
   const load = useCallback(async () => {
     try {
       const r = await staffAPI.getAll();
-      setRows(r.data.data.staff);
-      setLimits(r.data.data.limits);
+      const staffList = r.data?.data?.staff || r.data?.data?.users || [];
+      setRows(staffList);
+      setLimits(r.data?.data?.limits || (r.data?.data?.limit ? { maxUsers: r.data.data.limit } : null));
     } catch (e) {
       toast.error(getErrorMessage(e));
+      setRows([]);
     } finally {
       setLoading(false);
     }
@@ -67,9 +69,9 @@ export default function Staff() {
     <Page maxWidth={1080}>
       <SectionHeader
         title="Staff"
-        subtitle={`${rows.length}${limits?.maxUsers ? ` of ${limits.maxUsers}` : ""} user logins for this shop`}
+        subtitle={`${rows?.length || 0}${limits?.maxUsers ? ` of ${limits.maxUsers}` : ""} user logins for this shop`}
         actions={
-          <button className="btn-primary" onClick={() => open(null)} disabled={limits?.maxUsers && rows.length >= limits.maxUsers}>
+          <button className="btn-primary" onClick={() => open(null)} disabled={Boolean(limits?.maxUsers && (rows?.length || 0) >= limits.maxUsers)}>
             <Plus size={14} /> Add staff
           </button>
         }
@@ -85,7 +87,7 @@ export default function Staff() {
       <div className="card" style={{ overflow: "hidden" }}>
         {loading ? (
           <PageLoader />
-        ) : rows.length === 0 ? (
+        ) : (rows?.length || 0) === 0 ? (
           <EmptyState icon={UserCog} title="No staff" />
         ) : (
           <Table>
@@ -100,7 +102,7 @@ export default function Staff() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((u) => (
+              {(rows || []).map((u) => (
                 <tr key={u.id}>
                   <Td primary style={{ fontWeight: 500 }}>
                     {u.username} {u.id === user?.id && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(you)</span>}

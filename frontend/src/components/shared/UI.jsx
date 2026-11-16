@@ -481,12 +481,17 @@ const TONES = {
   warning: ["rgba(var(--accent-rgb),0.12)", "var(--accent-dark)"],
   info: ["var(--info-light)", "var(--info)"],
   neutral: ["var(--bg-sunken)", "var(--text-secondary)"],
+  muted: ["var(--bg-sunken)", "var(--text-muted)"],
+  accent: ["rgba(var(--accent-rgb),0.12)", "var(--accent-dark)"],
 };
-export const Pill = ({ tone = "neutral", children, style = {} }) => (
-  <span className="badge" style={{ background: TONES[tone][0], color: TONES[tone][1], whiteSpace: "nowrap", ...style }}>
-    {children}
-  </span>
-);
+export const Pill = ({ tone = "neutral", children, style = {} }) => {
+  const colors = TONES[tone] || TONES.neutral;
+  return (
+    <span className="badge" style={{ background: colors[0], color: colors[1], whiteSpace: "nowrap", ...style }}>
+      {children}
+    </span>
+  );
+};
 
 export const Th = ({ children, align = "left", style = {} }) => (
   <th
