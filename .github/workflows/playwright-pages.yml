@@ -1,0 +1,140 @@
+name: Playwright DEV Test and Report
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    outputs:
+      pages_artifact: ${{ steps.pages_artifact.outcome == 'success' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Configure E2E test database
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_USER: root
+          DB_PASSWORD: root
+        run: |
+          cat << 'EOF' > backend/.env.e2e.local
+          E2E_MODE=true
+          PORT=5000
+          NODE_ENV=development
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_USER=supermart_e2e
+          DB_PASSWORD=E2eSecurePass_2026!
+          DB_NAME=supermart_test_master
+          TENANT_DB_PREFIX=sm_test_shop_
+          DISABLE_RATE_LIMIT=true
+          JWT_SECRET=e2e-jwt-secret-key-minimum-32-chars-long-2026
+          JWT_REFRESH_SECRET=e2e-jwt-refresh-secret-minimum-32-chars-2026
+          COOKIE_SECRET=e2e-cookie-secret-minimum-32-chars-2026
+          ADMIN_PASSWORD=admin123
+          EOF
+          node backend/scripts/setup-e2e-db.js
+
+      - name: Run Mock E2E tests
+        id: test_mock
+        working-directory: frontend
+        run: npm run test:e2e -- --reporter=html
+        continue-on-error: true
+
+      - name: Run Real Backend E2E tests
+        id: test_real
+        working-directory: frontend
+        run: npm run test:e2e:real
+        continue-on-error: true
+
+      - name: Combine Playwright HTML reports
+        working-directory: frontend
+        run: node scripts/generate-combined-report.js
+
+      - name: Upload combined Playwright report for GitHub Pages
+        id: pages_artifact
+        if: ${{ always() && github.ref == 'refs/heads/dev' && hashFiles('frontend/combined-report/index.html') != '' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/combined-report
+
+      - name: Upload raw test artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-artifacts
+          path: |
+            frontend/playwright-report/
+            frontend/playwright-report-real/
+            frontend/combined-report/
+            frontend/test-results/
+          retention-days: 14
+
+      - name: Fail workflow if tests failed
+        if: ${{ steps.test_mock.outcome == 'failure' || steps.test_real.outcome == 'failure' }}
+        run: |
+          echo "::error::One or more test suites failed! Mock tests: ${{ steps.test_mock.outcome }}, Real E2E tests: ${{ steps.test_real.outcome }}"
+          exit 1
+
+  deploy:
+    needs: e2e
+    if: ${{ always() && github.ref == 'refs/heads/dev' && needs.e2e.outputs.pages_artifact == 'true' }}
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Publish combined Playwright report
+        id: deployment
+        uses: actions/deploy-pages@v4

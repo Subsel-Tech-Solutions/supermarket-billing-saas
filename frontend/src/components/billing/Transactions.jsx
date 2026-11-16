@@ -1,8 +1,8 @@
 // src/components/billing/Transactions.jsx — sales history: view, reprint, return, cancel
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import { FileText, XCircle, Printer, RotateCcw, Download } from "lucide-react";
-import { billAPI, openInvoice } from "../../services/api";
+import { billAPI, openInvoice, newClientRef } from "../../services/api";
 import { formatCurrency, formatDateTime, formatQty, getErrorMessage, num, PAYMENT_LABELS, paymentColor, downloadCSV, debounce, numericOnly, blockNonNumericKeys, amountToWords } from "../../utils/helpers";
 import { printReceipt } from "../../utils/receipt";
 import { PageLoader, EmptyState, Modal, SectionHeader, Page, Pagination, Pill, Table, Th, Td, SearchInput, Spinner, FormField } from "../shared/UI";
@@ -387,12 +387,14 @@ function ReturnModal({ bill, onClose, onDone }) {
   const [refundMethod, setRefundMethod] = useState("cash");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const clientRef = useRef(newClientRef());
 
   useEffect(() => {
     setQty({});
     setRestock({});
     setReason("");
     setRefundMethod(bill && num(bill.dueAmount) > 0 ? "adjust_due" : "cash");
+    clientRef.current = newClientRef();
   }, [bill]);
 
   if (!bill) return null;
@@ -404,8 +406,9 @@ function ReturnModal({ bill, onClose, onDone }) {
     if (!list.length) return toast.error("Enter quantity to return");
     setBusy(true);
     try {
-      const r = await billAPI.returnItems(bill.id, { items: list, refundMethod, reason });
-      toast.success(r.data.message);
+      const r = await billAPI.returnItems(bill.id, { clientRef: clientRef.current, items: list, refundMethod, reason });
+      if (r.data.duplicate) toast("This return was already saved — showing the original return", { icon: "ℹ️" });
+      else toast.success(r.data.message);
       onDone(r.data.data.bill);
     } catch (e) {
       toast.error(getErrorMessage(e));

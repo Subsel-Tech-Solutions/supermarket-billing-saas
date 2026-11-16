@@ -111,7 +111,8 @@ After upgrading the code later (new columns), start once with `DB_SYNC_ALTER=tru
 
 > **Upgrading an existing install to this version:** you must do that `DB_SYNC_ALTER=true` start once.
 > The `bills` table gains `client_ref` (the duplicate-sale guard) and `igst` / `inter_state` /
-> `place_of_supply` / `customer_gst_number` (inter-state GST invoices). Existing bills are untouched.
+> `place_of_supply` / `customer_gst_number` (inter-state GST invoices). The `sale_returns` table
+> gains `client_ref` (the duplicate-return guard). Existing bills and returns are untouched.
 
 ### Behind a reverse proxy
 

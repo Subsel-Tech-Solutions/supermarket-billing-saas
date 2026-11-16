@@ -6,11 +6,19 @@ node_modules/
 .env
 .env.local
 .env.production
+.env.e2e.local
+*.e2e.local
+*.local
 
 # Build outputs
 dist/
 build/
 .cache/
+playwright-report/
+playwright-report-real/
+combined-report/
+test-results/
+test-results-real/
 
 # Logs
 *.log

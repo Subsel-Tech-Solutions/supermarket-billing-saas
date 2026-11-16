@@ -20,10 +20,14 @@
   "scripts": {
     "start": "craco start",
     "build": "craco build",
-    "test": "craco test --watchAll=false"
+    "test": "craco test --watchAll=false",
+    "test:e2e": "playwright test",
+    "test:e2e:real": "playwright test --config=playwright.real.config.js",
+    "report:combine": "node scripts/generate-combined-report.js"
   },
   "devDependencies": {
     "@craco/craco": "^7.1.0",
+    "@playwright/test": "~1.56.1",
     "autoprefixer": "^10.4.14",
     "postcss": "^8.4.27",
     "react-scripts": "5.0.1",

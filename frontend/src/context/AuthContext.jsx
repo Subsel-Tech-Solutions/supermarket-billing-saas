@@ -16,7 +16,7 @@ const read = (key) => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => read("user"));
   const [shop, setShop] = useState(() => read("shop"));
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !read("user"));
   const [subscriptionExpired, setSubscriptionExpired] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(() => !!read("isImpersonating"));
 
