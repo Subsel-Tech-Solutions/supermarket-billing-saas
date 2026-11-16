@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { calculateBill, settlePayments } = require("../utils/billMath");
+const { calculateBill, settlePayments, assertCashRefundWithinCollected } = require("../utils/billMath");
 const S = { defaultPaymentMethod: "cash" };
 // Most tests below are plain tendered payments; acceptDue lets a short payment become credit.
 const DUE_OK = (extra = {}) => ({ acceptDue: true, ...extra });
@@ -208,6 +208,21 @@ check("a zero-total bill settles cleanly", () => {
   const p = settlePayments(0, { paymentMethod: "cash" }, S);
   assert.equal(p.due, 0);
   assert.equal(p.change, 0);
+});
+
+check("cash refunds cannot exceed the amount collected", () => {
+  assert.throws(
+    () => assertCashRefundWithinCollected(100, 0, 100.01),
+    (err) => err.statusCode === 400 && err.code === "CASH_REFUND_LIMIT" && /available is 100\.00/.test(err.message),
+  );
+});
+
+check("cash refund limit accounts for earlier money refunds", () => {
+  assert.throws(
+    () => assertCashRefundWithinCollected(100, 60, 40.01),
+    (err) => err.statusCode === 400 && err.code === "CASH_REFUND_LIMIT" && /available is 40\.00/.test(err.message),
+  );
+  assert.doesNotThrow(() => assertCashRefundWithinCollected(100, 60, 40));
 });
 
 if (process.exitCode) console.error(`${passed} passed, some FAILED ✗`);

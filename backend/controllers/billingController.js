@@ -1,7 +1,7 @@
 // controllers/billingController.js — POS sales, returns, cancellations, held bills
 const { Op } = require("sequelize");
 const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, normalizePhone, isValidPhone, assertPriceWithinMrp } = require("../utils/helpers");
-const { calculateBill, settlePayments } = require("../utils/billMath");
+const { calculateBill, settlePayments, assertCashRefundWithinCollected } = require("../utils/billMath");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { rangeFromStrings } = require("../utils/dates");
 const { moveStock } = require("../utils/stock");
@@ -478,12 +478,26 @@ const returnBill = asyncHandler(async (req, res) => {
   if (req.user.role === "cashier" && !req.isSuperAdmin && !settings.cashierCanCancel) {
     throw new HttpError(403, "Cashiers are not allowed to process returns");
   }
+  const clientRef = str(body.clientRef, 64);
   const refundMethod = ["cash", "upi", "card", "adjust_due", "store_credit"].includes(body.refundMethod) ? body.refundMethod : "cash";
 
   const t = await req.tenant.sequelize.transaction();
   try {
     const bill = await db.Bill.findByPk(req.params.id, { include: [{ model: db.BillItem, as: "items" }], transaction: t, lock: t.LOCK.UPDATE });
     if (!bill) throw new HttpError(404, "Bill not found");
+    if (clientRef) {
+      const existing = await db.SaleReturn.findOne({ where: { billId: bill.id, clientRef }, transaction: t });
+      if (existing) {
+        await t.commit();
+        const fullBill = await db.Bill.findByPk(bill.id, { include: fullBillInclude(db) });
+        return res.status(200).json({
+          success: true,
+          message: "Return already saved",
+          data: { bill: fullBill, returnNumber: existing.returnNumber, amount: Number(existing.totalAmount) },
+          duplicate: true,
+        });
+      }
+    }
     if (!["completed", "partially_returned"].includes(bill.status)) throw new HttpError(400, "This bill cannot be returned");
 
     // Checked up front: "adjust against dues" and "store credit" both need an account to
@@ -516,9 +530,18 @@ const returnBill = asyncHandler(async (req, res) => {
       rows.push({ billItemId: item.id, productId: item.productId, productName: item.productName, quantity: q, amount, restock });
     }
 
+    if (refundMethod === "cash") {
+      const priorMoneyRefunds = await db.SaleReturn.sum("totalAmount", {
+        where: { billId: bill.id, refundMethod: { [Op.in]: ["cash", "upi", "card"] } },
+        transaction: t,
+      });
+      assertCashRefundWithinCollected(bill.paidAmount, priorMoneyRefunds, total);
+    }
+
     const saleReturn = await db.SaleReturn.create(
       {
         returnNumber,
+        clientRef,
         billId: bill.id,
         billNumber: bill.billNumber,
         customerId: bill.customerId,
@@ -572,6 +595,18 @@ const returnBill = asyncHandler(async (req, res) => {
     res.status(201).json({ success: true, message: `Return ${returnNumber} saved — refund ${total.toFixed(2)}`, data: { bill: updated, returnNumber, amount: total } });
   } catch (err) {
     if (!t.finished) await t.rollback();
+    if (clientRef && err?.name === "SequelizeUniqueConstraintError") {
+      const existing = await db.SaleReturn.findOne({ where: { billId: req.params.id, clientRef } });
+      if (existing) {
+        const fullBill = await db.Bill.findByPk(existing.billId, { include: fullBillInclude(db) });
+        return res.status(200).json({
+          success: true,
+          message: "Return already saved",
+          data: { bill: fullBill, returnNumber: existing.returnNumber, amount: Number(existing.totalAmount) },
+          duplicate: true,
+        });
+      }
+    }
     throw err;
   }
 });

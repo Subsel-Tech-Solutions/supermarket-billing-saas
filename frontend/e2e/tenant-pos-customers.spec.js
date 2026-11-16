@@ -105,14 +105,42 @@ test.describe("Tenant POS Billing, Sales History, Customers & Day Closing", () =
     const retModal = page.getByRole("dialog", { name: /Return — INV-000001/ });
     await retModal.locator("tbody tr input[type='text']").first().fill("1");
     await fieldControl(retModal, "Reason").fill("Damaged pack");
+    let returnPayload;
+    const captureReturn = (request) => {
+      if (request.method() === "POST" && request.url().includes("/api/bills/1/return")) {
+        returnPayload = JSON.parse(request.postData());
+      }
+    };
+    page.on("request", captureReturn);
     await retModal.getByRole("button", { name: /Save return/ }).click();
     await expect(page.getByText(/Return RET-000001 saved/)).toBeVisible();
+    page.off("request", captureReturn);
+    expect(returnPayload?.clientRef).toBeTruthy();
+    const retriedReturn = await page.evaluate(async (payload) => {
+      const response = await fetch("/api/bills/1/return", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      return { status: response.status, body: await response.json() };
+    }, returnPayload);
+    expect(retriedReturn.status).toBe(200);
+    expect(retriedReturn.body.duplicate).toBe(true);
+    expect(state.shopDbs[1].saleReturns.filter((r) => r.clientRef === returnPayload.clientRef)).toHaveLength(1);
     await expect(billModal.getByText("Part returned").first()).toBeVisible();
     await billModal.getByRole("button", { name: "Close" }).click();
 
     // Open INV-000002 -> Cancel bill
     await page.getByText("INV-000002").click();
     const inv2Modal = page.getByRole("dialog", { name: "INV-000002" });
+    await inv2Modal.getByRole("button", { name: "Return items" }).click();
+    const unpaidReturn = page.getByRole("dialog", { name: /Return — INV-000002/ });
+    await unpaidReturn.locator("tbody tr input[type='text']").first().fill("1");
+    await fieldControl(unpaidReturn, "Refund as").selectOption("cash");
+    await unpaidReturn.getByRole("button", { name: /Save return/ }).click();
+    await expect(page.getByText(/Cash refund exceeds the amount collected/)).toBeVisible();
+    await unpaidReturn.getByRole("button", { name: "Back" }).click();
+
     await inv2Modal.getByRole("button", { name: "Cancel bill" }).click();
     const cancelConfirm = page.getByRole("dialog", { name: "Cancel bill" });
     await cancelConfirm.getByPlaceholder("e.g. Wrong billing").fill("Customer changed mind");

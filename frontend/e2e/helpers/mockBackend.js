@@ -2193,11 +2193,39 @@ async function installMockApi(page, state = createMockState()) {
       const id = parseInt(billReturnMatch[1], 10);
       const bill = db.bills.find((b) => b.id === id);
       if (!bill) return fail(404, "Bill not found");
+      const clientRef = typeof body.clientRef === "string" ? body.clientRef.slice(0, 64) : null;
+      if (clientRef) {
+        const existing = db.saleReturns.find((r) => r.billId === bill.id && r.clientRef === clientRef);
+        if (existing) {
+          return route.fulfill({
+            status: 200,
+            json: {
+              success: true,
+              message: "Return already saved",
+              data: { bill, returnNumber: existing.returnNumber, amount: existing.totalAmount },
+              duplicate: true,
+            },
+          });
+        }
+      }
       const reqItems = (Array.isArray(body.items) ? body.items : []).filter((i) => num(i.quantity) > 0);
       if (!reqItems.length) return fail(400, "Select at least one item to return");
       const refundMethod = body.refundMethod || "cash";
       if (!bill.customerId && (refundMethod === "adjust_due" || refundMethod === "store_credit")) {
         return fail(400, "Customer required for adjust_due / store_credit");
+      }
+      if (refundMethod === "cash") {
+        const priorMoneyRefunds = db.saleReturns
+          .filter((r) => r.billId === bill.id && ["cash", "upi", "card"].includes(r.refundMethod))
+          .reduce((sum, r) => sum + num(r.totalAmount), 0);
+        const available = round2(Math.max(0, num(bill.paidAmount) - priorMoneyRefunds));
+        const requestedTotal = round2(reqItems.reduce((sum, r) => {
+          const item = bill.items.find((x) => x.id === parseInt(r.billItemId, 10));
+          return item ? sum + (num(item.totalPrice) / num(item.quantity)) * num(r.quantity) : sum;
+        }, 0));
+        if (requestedTotal > available + 0.001) {
+          return fail(400, `Cash refund exceeds the amount collected. Maximum cash refund available is ${available.toFixed(2)}`);
+        }
       }
       const retNum = `${db.settings.returnPrefix || "RET"}-${pad(db.seq.returnSeq++)}`;
       let total = 0;
@@ -2245,6 +2273,7 @@ async function installMockApi(page, state = createMockState()) {
       db.saleReturns.unshift({
         id: db.nextId.saleReturn++,
         returnNumber: retNum,
+        clientRef,
         billId: bill.id,
         billNumber: bill.billNumber,
         customerId: bill.customerId,
