@@ -184,6 +184,7 @@ export default function Billing() {
   const [heldId, setHeldId] = useState(() => meta.heldId || null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkout, setCheckout] = useState(emptyCheckout(settings.defaultPaymentMethod || "cash"));
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [lastBill, setLastBill] = useState(null);
   // Mobile: the cart is a sheet that slides up rather than a permanently docked panel.
@@ -443,6 +444,43 @@ export default function Billing() {
   const lineFor = (productId) => calc.lines.find((l) => l.productId === productId);
   const totalQty = cart.reduce((s, i) => s + i.quantity, 0);
 
+  const refreshCartPrices = async () => {
+    const response = await billAPI.preview({
+      items: cart.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        discount: num(item.discount),
+      })),
+    });
+    const { prices, unavailableProductIds = [] } = response.data.data;
+    if (!Array.isArray(prices)) throw new Error("The server did not return current product prices");
+    if (unavailableProductIds.length) {
+      toast.error("Some products are no longer available. Remove them before billing.");
+      return false;
+    }
+
+    const latestById = new Map(prices.map((item) => [Number(item.productId), item]));
+    if (cart.some((item) => !latestById.has(Number(item.productId)))) {
+      toast.error("Could not verify every product price. Please refresh the cart and try again.");
+      return false;
+    }
+
+    const changed = cart.some((item) => {
+      const latest = latestById.get(Number(item.productId));
+      return Math.round(num(item.price) * 100) !== Math.round(num(latest.price) * 100);
+    });
+    setCart((current) =>
+      current.map((item) => {
+        const latest = latestById.get(Number(item.productId));
+        const price = num(latest.price);
+        const taxRate = num(latest.taxRate);
+        return { ...item, price, taxRate };
+      }),
+    );
+    if (changed) toast("Product prices were updated. Review the new total before confirming.", { icon: "ℹ️" });
+    return true;
+  };
+
   const paymentList = checkout.split
     ? Object.entries(checkout.payments)
         .filter(([, v]) => num(v) > 0)
@@ -494,7 +532,7 @@ export default function Billing() {
         // Same key for every retry of this sale — the server returns the original bill
         // rather than creating a second one and taking the stock down twice.
         clientRef: clientRef.current,
-        items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity, discount: num(i.discount) })),
+        items: cart.map((i) => ({ productId: i.productId, expectedPrice: i.price, quantity: i.quantity, discount: num(i.discount) })),
         customerId: customer?.id,
         customerName: custName || undefined,
         customerPhone: cleanedPhone || undefined,
@@ -517,7 +555,14 @@ export default function Billing() {
       if (settings.autoPrintAfterSale) printReceipt(bill, settings);
     } catch (err) {
       const status = err?.response?.status;
-      if (!err?.response) {
+      if (err?.response?.data?.code === "PRICE_CHANGED") {
+        try {
+          await refreshCartPrices();
+        } catch (refreshError) {
+          toast.error(getErrorMessage(refreshError));
+        }
+        toast.error("A product price changed before the sale was saved. Review the updated total and confirm again.");
+      } else if (!err?.response) {
         // Nothing came back: the bill may or may not have been written. Keeping the same
         // clientRef means pressing Confirm again is safe either way.
         toast.error("No answer from the server — check the connection and press Confirm again. The bill will not be duplicated.", {
@@ -533,12 +578,21 @@ export default function Billing() {
     }
   };
 
-  const openCheckout = () => {
+  const openCheckout = async () => {
     if (!online) return toast.error("Counter Paused: Selling is stopped while offline. Connection to server is required.", { id: "offline-selling-paused" });
     if (!cart.length) return;
-    setCartOpen(false);
-    setCheckout((c) => ({ ...c, method: methods.includes(c.method) ? c.method : methods[0] }));
-    setCheckoutOpen(true);
+    if (refreshingPrices) return;
+    setRefreshingPrices(true);
+    try {
+      if (!(await refreshCartPrices())) return;
+      setCartOpen(false);
+      setCheckout((c) => ({ ...c, method: methods.includes(c.method) ? c.method : methods[0] }));
+      setCheckoutOpen(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setRefreshingPrices(false);
+    }
   };
 
   // ── Keyboard: USB scanner (typing outside inputs) + shortcuts ─────────────
@@ -813,8 +867,8 @@ export default function Billing() {
         <button className="btn-ghost" style={{ flexShrink: 0 }} onClick={() => setCartOpen(true)} disabled={!cart.length}>
           View
         </button>
-        <button className="btn-primary" style={{ flexShrink: 0, opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }} onClick={openCheckout} disabled={!cart.length || !online}>
-          <Receipt size={14} /> Pay
+        <button className="btn-primary" style={{ flexShrink: 0, opacity: !online || refreshingPrices ? 0.6 : 1, cursor: !online || refreshingPrices ? "not-allowed" : "pointer" }} onClick={openCheckout} disabled={!cart.length || !online || refreshingPrices}>
+          <Receipt size={14} /> {refreshingPrices ? "Checking..." : "Pay"}
         </button>
       </div>
 
@@ -894,8 +948,8 @@ export default function Billing() {
                 <span style={{ ...mono, color: "var(--accent-dark)" }}>{formatCurrency(calc.totalAmount)}</span>
               </div>
             </div>
-            <button onClick={openCheckout} disabled={!cart.length || !online} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14, opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
-              {online ? <><Receipt size={15} /> Checkout (F9)</> : <><WifiOff size={15} /> Selling Paused (Offline)</>}
+            <button onClick={openCheckout} disabled={!cart.length || !online || refreshingPrices} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14, opacity: !online || refreshingPrices ? 0.6 : 1, cursor: !online || refreshingPrices ? "not-allowed" : "pointer" }}>
+              {!online ? <><WifiOff size={15} /> Selling Paused (Offline)</> : <><Receipt size={15} /> {refreshingPrices ? "Checking prices..." : "Checkout (F9)"}</>}
             </button>
           </div>
         )}
