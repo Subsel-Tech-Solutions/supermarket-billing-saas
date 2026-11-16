@@ -7,6 +7,7 @@
     "seed:e2e": "node backend/scripts/seed-e2e.js",
     "reset:e2e": "node backend/scripts/reset-e2e.js",
     "test:e2e": "npm --prefix frontend run test:e2e",
+    "pretest:e2e:real": "node backend/scripts/free-port-5000.js",
     "test:e2e:real": "npm --prefix frontend run test:e2e:real",
     "report:combine": "npm --prefix frontend run report:combine"
   },
