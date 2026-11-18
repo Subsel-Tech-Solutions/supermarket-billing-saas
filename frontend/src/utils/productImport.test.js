@@ -1,5 +1,17 @@
 import * as XLSX from "xlsx";
-import { mapImportRow, mapSpreadsheetRows, parseProductCsv, parseProductSpreadsheet } from "./productImport";
+import {
+  isProductImportFileTooLarge,
+  mapImportRow,
+  mapSpreadsheetRows,
+  MAX_PRODUCT_IMPORT_FILE_SIZE,
+  parseProductCsv,
+  parseProductSpreadsheet,
+} from "./productImport";
+
+test("enforces the spreadsheet upload size limit", () => {
+  expect(isProductImportFileTooLarge({ size: MAX_PRODUCT_IMPORT_FILE_SIZE })).toBe(false);
+  expect(isProductImportFileTooLarge({ size: MAX_PRODUCT_IMPORT_FILE_SIZE + 1 })).toBe(true);
+});
 
 test("maps common product column spellings and defaults quantity", () => {
   expect(

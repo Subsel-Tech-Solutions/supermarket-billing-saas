@@ -4,7 +4,13 @@ import { FileSpreadsheet, X, Upload, CheckCircle2, AlertCircle } from "lucide-re
 import { productAPI } from "../../services/api";
 import { getErrorMessage } from "../../utils/helpers";
 import { Spinner, Modal } from "../shared/UI";
-import { parseProductCsv, parseProductSpreadsheet } from "../../utils/productImport";
+import {
+  isProductImportFileTooLarge,
+  MAX_PRODUCT_IMPORT_FILE_SIZE,
+  MAX_PRODUCT_IMPORT_FILE_SIZE_MB,
+  parseProductCsv,
+  parseProductSpreadsheet,
+} from "../../utils/productImport";
 
 export default function BulkImportModal({ isOpen, onClose, onImported }) {
   const [step, setStep] = useState("upload");
@@ -22,6 +28,10 @@ export default function BulkImportModal({ isOpen, onClose, onImported }) {
 
   const parseFile = (file) => {
     if (!file) return;
+    if (isProductImportFileTooLarge(file)) {
+      toast.error(`File exceeds the ${MAX_PRODUCT_IMPORT_FILE_SIZE_MB} MB limit. Choose a smaller spreadsheet.`);
+      return;
+    }
     const ext = file.name.split(".").pop().toLowerCase();
     const reader = new FileReader();
     if (ext === "csv") {
@@ -127,7 +137,8 @@ export default function BulkImportModal({ isOpen, onClose, onImported }) {
             </p>
             <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
               Supports <strong>.csv</strong>, <strong>.xlsx</strong>,{" "}
-              <strong>.xls</strong> — Click to browse
+              <strong>.xls</strong> — maximum{" "}
+              <strong>{MAX_PRODUCT_IMPORT_FILE_SIZE_MB} MB</strong> — Click to browse
             </p>
           </div>
           <div

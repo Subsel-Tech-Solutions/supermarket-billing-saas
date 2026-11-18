@@ -3,10 +3,9 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { IndianRupee, ShoppingBag, Package, TrendingUp, AlertTriangle, Clock, Wallet, Users, RefreshCw } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import toast from "react-hot-toast";
 import { reportAPI } from "../../services/api";
-import { formatCurrency, formatDateTime, formatDate, formatQty, num, PAYMENT_LABELS, paymentColor, currencySymbol } from "../../utils/helpers";
-import { StatCard, PageLoader, Pill } from "../shared/UI";
+import { formatCurrency, formatDateTime, formatDate, formatQty, getErrorMessage, num, PAYMENT_LABELS, paymentColor, currencySymbol } from "../../utils/helpers";
+import { StatCard, PageLoader, Pill, EmptyState } from "../shared/UI";
 import { useSettings } from "../../context/SettingsContext";
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -37,13 +36,15 @@ export default function Dashboard() {
   const { settings } = useSettings();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const load = useCallback(async () => {
     try {
       const res = await reportAPI.getDashboard();
       setData(res.data.data);
-    } catch {
-      toast.error("Failed to load dashboard");
+      setLoadError("");
+    } catch (err) {
+      setLoadError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -77,7 +78,18 @@ export default function Dashboard() {
   }, [load]);
 
   if (loading) return <PageLoader />;
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="page-content">
+        <EmptyState
+          icon={AlertTriangle}
+          title="Dashboard unavailable"
+          description={loadError}
+          action={<button className="btn-primary" onClick={load}>Try again</button>}
+        />
+      </div>
+    );
+  }
 
   const chartData = data.last7Days.map((d) => ({
     date: new Date(`${d.date}T00:00:00`).toLocaleDateString(settings.locale || "en-IN", { weekday: "short", day: "numeric" }),
@@ -107,6 +119,13 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {loadError && (
+        <div role="alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 14px", marginBottom: 16, borderRadius: 8, background: "var(--warning-light, rgba(217, 148, 48, 0.12))", color: "var(--text-secondary)", fontSize: 13 }}>
+          <span>Could not refresh dashboard: {loadError}</span>
+          <button className="btn-ghost" onClick={load}><RefreshCw size={13} /> Try again</button>
+        </div>
+      )}
 
       <div className="stagger grid-stats" style={{ marginBottom: 16 }}>
         <StatCard

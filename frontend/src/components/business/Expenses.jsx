@@ -208,11 +208,11 @@ export default function Expenses() {
           try {
             await expenseAPI.delete(del.id);
             toast.success("Deleted");
+            setDel(null);
             load();
           } catch (e) {
             toast.error(getErrorMessage(e));
           }
-          setDel(null);
         }}
       />
     </Page>

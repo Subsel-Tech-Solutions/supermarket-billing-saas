@@ -137,11 +137,11 @@ export default function Suppliers() {
           try {
             await supplierAPI.delete(delFor.id);
             toast.success("Supplier removed");
+            setDelFor(null);
             load();
           } catch (e) {
             toast.error(getErrorMessage(e));
           }
-          setDelFor(null);
         }}
       />
       <Modal isOpen={!!detail} onClose={() => setDetail(null)} title={detail?.supplier.name} maxWidth={680}>

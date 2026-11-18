@@ -2,7 +2,21 @@ const LEGACY_KEY = "pos.cart";
 const KEY_PREFIX = `${LEGACY_KEY}:`;
 const MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
-export const cartOwnerKey = (user, shop) => (user?.id && shop?.id ? `${shop.id}:${user.id}` : null);
+const ownerId = (entity) => {
+  if (!entity) return null;
+  for (const key of ["id", "_id"]) {
+    const value = entity[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value);
+  }
+  return null;
+};
+
+export const cartOwnerKey = (user, shop) => {
+  const fallbackShopId = !shop && user?.shopId != null ? String(user.shopId) : null;
+  const shopId = ownerId(shop) || fallbackShopId;
+  const userId = ownerId(user);
+  return shopId && userId ? `${shopId}:${userId}` : null;
+};
 export const persistedCartKey = (owner) => (owner ? `${KEY_PREFIX}${owner}` : LEGACY_KEY);
 
 export const clearPersistedCart = (owner) => {

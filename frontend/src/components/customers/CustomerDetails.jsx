@@ -19,6 +19,7 @@ export default function CustomerDetails() {
   const { can } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState("bills");
   const [editOpen, setEditOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
@@ -27,12 +28,13 @@ export default function CustomerDetails() {
   const [points, setPoints] = useState("");
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       const r = await customerAPI.getById(id);
       setData(r.data.data);
     } catch (e) {
-      toast.error(getErrorMessage(e));
-      navigate("/customers");
+      setLoadError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -41,7 +43,23 @@ export default function CustomerDetails() {
     load();
   }, [load]);
 
-  if (loading || !data) return <PageLoader />;
+  if (loading && !data) return <PageLoader />;
+  if (!data) {
+    return (
+      <Page>
+        <EmptyState
+          title="Could not load customer"
+          description={loadError}
+          action={
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" onClick={() => navigate("/customers")}>Back to customers</button>
+              <button className="btn-primary" onClick={load}>Try again</button>
+            </div>
+          }
+        />
+      </Page>
+    );
+  }
   const { customer: c, bills, payments, returns } = data;
   const balance = num(c.balance);
 
@@ -56,6 +74,13 @@ export default function CustomerDetails() {
       <button className="btn-ghost" style={{ marginBottom: 16 }} onClick={() => navigate("/customers")}>
         <ArrowLeft size={14} /> Customers
       </button>
+      {loadError && (
+        <div role="alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 14px", marginBottom: 16, borderRadius: 8, background: "var(--warning-light, rgba(217, 148, 48, 0.12))", color: "var(--text-secondary)", fontSize: 13 }}>
+          <span>Could not refresh customer: {loadError}</span>
+          <button className="btn-ghost" onClick={load}>Try again</button>
+        </div>
+      )}
+      {loading && data && <p role="status" style={{ marginBottom: 10, color: "var(--text-muted)", fontSize: 12 }}>Refreshing customer…</p>}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12, paddingBottom: 18, borderBottom: "1px solid var(--border)", marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 300 }}>{c.name}</h1>
@@ -247,7 +272,6 @@ export default function CustomerDetails() {
             navigate("/customers");
           } catch (e) {
             toast.error(getErrorMessage(e));
-            setDelOpen(false);
           }
         }}
       />

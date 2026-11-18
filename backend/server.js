@@ -51,7 +51,8 @@ app.get("/api/health", async (req, res) => {
     await sequelize.query("SELECT 1");
     res.json({ status: "OK", database: "up", timestamp: new Date(), tenants: stats().openConnections });
   } catch (err) {
-    res.status(503).json({ status: "DEGRADED", database: "down", message: err.message });
+    console.error("Health check database query failed:", err);
+    res.status(503).json({ status: "DEGRADED", database: "down", message: "Health check failed" });
   }
 });
 

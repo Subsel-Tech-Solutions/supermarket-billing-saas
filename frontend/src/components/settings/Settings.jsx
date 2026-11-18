@@ -143,7 +143,7 @@ export default function Settings() {
     try {
       set("logo", await readLogo(file));
     } catch (err) {
-      toast.error(err.message);
+      toast.error(getErrorMessage(err));
     }
   };
 
