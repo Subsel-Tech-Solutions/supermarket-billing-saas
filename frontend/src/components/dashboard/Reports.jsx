@@ -1,6 +1,5 @@
 // src/components/dashboard/Reports.jsx — business reports with date range + CSV export
 import React, { useCallback, useEffect, useState } from "react";
-import toast from "react-hot-toast";
 import { BarChart3, Package, Layers, Percent, TrendingUp, Users, Clock, Download, IndianRupee, ShoppingBag, Receipt, ShieldCheck } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { reportAPI } from "../../services/api";
@@ -54,10 +53,12 @@ export default function Reports() {
   const [result, setResult] = useState({ tab: null, data: null });
   const data = result.tab === tab ? result.data : null;
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [expiryDays, setExpiryDays] = useState(30);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const p = { ...range };
       const fetchers = {
@@ -74,8 +75,7 @@ export default function Reports() {
       const r = await fetchers[tab]();
       setResult({ tab, data: r.data.data });
     } catch (e) {
-      toast.error(getErrorMessage(e));
-      setResult({ tab, data: null });
+      setLoadError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -179,7 +179,31 @@ export default function Reports() {
         </div>
       )}
 
-      {loading || result.tab !== tab ? <PageLoader /> : !data ? <EmptyState icon={BarChart3} title="No data" /> : <ReportBody tab={tab} data={data} />}
+      {loading && !data ? (
+        <PageLoader />
+      ) : data ? (
+        <>
+          {loading && <p role="status" style={{ marginBottom: 10, color: "var(--text-muted)", fontSize: 12 }}>Refreshing report…</p>}
+          {loadError && (
+            <div role="alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 14px", marginBottom: 16, borderRadius: 8, background: "var(--warning-light, rgba(217, 148, 48, 0.12))", color: "var(--text-secondary)", fontSize: 13 }}>
+              <span>Could not refresh report: {loadError}</span>
+              <button className="btn-ghost" onClick={load}>Try again</button>
+            </div>
+          )}
+          <ReportBody tab={tab} data={data} />
+        </>
+      ) : loadError ? (
+        <EmptyState
+          icon={BarChart3}
+          title="Could not load report"
+          description={loadError}
+          action={<button className="btn-primary" onClick={load}>Try again</button>}
+        />
+      ) : result.tab !== tab ? (
+        <PageLoader />
+      ) : (
+        <EmptyState icon={BarChart3} title="No data" />
+      )}
     </Page>
   );
 }

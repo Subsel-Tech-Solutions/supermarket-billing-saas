@@ -1,5 +1,9 @@
 import * as XLSX from "xlsx";
 
+export const MAX_PRODUCT_IMPORT_FILE_SIZE_MB = 5;
+export const MAX_PRODUCT_IMPORT_FILE_SIZE = MAX_PRODUCT_IMPORT_FILE_SIZE_MB * 1024 * 1024;
+export const isProductImportFileTooLarge = (file) => file.size > MAX_PRODUCT_IMPORT_FILE_SIZE;
+
 const normalizeColumn = (name) => String(name).toLowerCase().replace(/[^a-z]/g, "");
 
 export const mapImportRow = (row) => {

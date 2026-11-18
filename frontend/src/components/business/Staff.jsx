@@ -19,20 +19,22 @@ export default function Staff() {
   const [rows, setRows] = useState([]);
   const [limits, setLimits] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [edit, setEdit] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [del, setDel] = useState(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       const r = await staffAPI.getAll();
       const staffList = r.data?.data?.staff || r.data?.data?.users || [];
       setRows(staffList);
       setLimits(r.data?.data?.limits || (r.data?.data?.limit ? { maxUsers: r.data.data.limit } : null));
     } catch (e) {
-      toast.error(getErrorMessage(e));
-      setRows([]);
+      setLoadError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -73,7 +75,7 @@ export default function Staff() {
         title="Staff"
         subtitle={`${activeUsers}${limits?.maxUsers ? ` of ${limits.maxUsers}` : ""} active user logins for this shop`}
         actions={
-          <button className="btn-primary" onClick={() => open(null)} disabled={Boolean(limits?.maxUsers && activeUsers >= limits.maxUsers)}>
+          <button className="btn-primary" onClick={() => open(null)} disabled={loading || Boolean(loadError) || Boolean(limits?.maxUsers && activeUsers >= limits.maxUsers)}>
             <Plus size={14} /> Add staff
           </button>
         }
@@ -93,8 +95,21 @@ export default function Staff() {
         ))}
       </div>
       <div className="card" style={{ overflow: "hidden" }}>
-        {loading ? (
+        {loadError && rows.length > 0 && (
+          <div role="alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 14px", color: "var(--text-secondary)", fontSize: 13 }}>
+            <span>Could not refresh staff: {loadError}</span>
+            <button className="btn-ghost" onClick={load}>Try again</button>
+          </div>
+        )}
+        {loading && rows.length === 0 ? (
           <PageLoader />
+        ) : loadError ? (
+          <EmptyState
+            icon={UserCog}
+            title="Could not load staff"
+            description={loadError}
+            action={<button className="btn-primary" onClick={load}>Try again</button>}
+          />
         ) : (rows?.length || 0) === 0 ? (
           <EmptyState icon={UserCog} title="No staff" />
         ) : (
@@ -183,11 +198,11 @@ export default function Staff() {
           try {
             await staffAPI.delete(del.id);
             toast.success("Removed");
+            setDel(null);
             load();
           } catch (e) {
             toast.error(getErrorMessage(e));
           }
-          setDel(null);
         }}
       />
     </Page>

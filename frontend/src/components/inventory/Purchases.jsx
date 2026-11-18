@@ -44,7 +44,7 @@ export default function Purchases() {
     supplierAPI
       .getAll({ limit: 1000 })
       .then((r) => setSuppliers(r.data.data.suppliers))
-      .catch(() => {});
+      .catch((err) => toast.error(getErrorMessage(err), { id: "purchase-suppliers-load" }));
   }, []);
 
   const setFilter = (k, v) => {
@@ -224,7 +224,6 @@ export default function Purchases() {
             load(page, filters);
           } catch (e) {
             toast.error(getErrorMessage(e));
-            setCancelFor(null);
           }
         }}
       />
@@ -259,8 +258,8 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
         // deleted ones, so a removed product could be added to a new purchase
         const r = await productAPI.getAll({ search: text, limit: 8 });
         setResults(r.data.data.products);
-      } catch {
-        /* ignore */
+      } catch (err) {
+        toast.error(getErrorMessage(err), { id: "purchase-product-search" });
       }
     }, 250),
     [],

@@ -259,8 +259,9 @@ export default function Billing() {
         const res = await productAPI.getByBarcode(code);
         addToCart(res.data.data.product);
         toast.success(res.data.data.product.name, { duration: 900, icon: "✓" });
-      } catch {
-        toast.error(`No product for barcode ${code}`);
+      } catch (err) {
+        if (err?.response?.status === 404) toast.error(`No product for barcode ${code}`);
+        else toast.error(getErrorMessage(err));
       }
     },
     [addToCart],
@@ -316,8 +317,8 @@ export default function Billing() {
         const res = await productAPI.getAll({ search: q, limit: 8 });
         setSearchResults(res.data.data.products);
         setActiveIdx(0);
-      } catch {
-        /* ignore */
+      } catch (err) {
+        toast.error(getErrorMessage(err), { id: "product-search" });
       } finally {
         setSearching(false);
       }
@@ -341,9 +342,9 @@ export default function Billing() {
       try {
         const res = await productAPI.getByBarcode(q);
         addToCart(res.data.data.product);
-      } catch {
-        if (searchResults[activeIdx]) addToCart(searchResults[activeIdx]);
-        else toast.error(`No product found for "${q}"`);
+      } catch (err) {
+        if (err?.response?.status === 404) toast.error(`No product found for "${q}"`);
+        else toast.error(getErrorMessage(err));
       }
     } else if (e.key === "Escape") {
       setSearchQuery("");
@@ -361,8 +362,8 @@ export default function Billing() {
       const c = r.data.data.customer;
       setCustomer(c);
       if (c) setCustName(c.name);
-    } catch {
-      setCustomer(null);
+    } catch (err) {
+      toast.error(getErrorMessage(err), { id: "customer-lookup" });
     } finally {
       setLookingUp(false);
     }
@@ -377,8 +378,8 @@ export default function Billing() {
       setHeldTotal(data.total);
       setHeldPage(data.page);
       setHeldPages(data.pages);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      toast.error(getErrorMessage(err), { id: "held-bills-load" });
     }
   }, []);
   useEffect(() => {
@@ -394,8 +395,21 @@ export default function Billing() {
         cart,
         meta: { custPhone, custName },
       });
-      if (heldId) await billAPI.deleteHeld(heldId).catch(() => {});
+      let cleanupError = null;
+      if (heldId) {
+        try {
+          await billAPI.deleteHeld(heldId);
+        } catch (err) {
+          cleanupError = err;
+        }
+      }
       toast.success("Bill put on hold");
+      if (cleanupError) {
+        toast.error(`New bill was held, but the resumed bill could not be removed: ${getErrorMessage(cleanupError)}`, {
+          id: "held-bill-cleanup",
+          duration: 6000,
+        });
+      }
       resetSale();
       loadHeld(1);
     } catch (err) {
@@ -1002,8 +1016,12 @@ export default function Billing() {
                   style={{ padding: "6px 8px" }}
                   aria-label="Delete held bill"
                   onClick={async () => {
-                    await billAPI.deleteHeld(h.id).catch(() => {});
-                    loadHeld(heldPage);
+                    try {
+                      await billAPI.deleteHeld(h.id);
+                      loadHeld(heldPage);
+                    } catch (err) {
+                      toast.error(getErrorMessage(err));
+                    }
                   }}
                 >
                   <X size={13} />

@@ -66,7 +66,25 @@ export const monthStartStr = () => {
   return ymd(new Date(d.getFullYear(), d.getMonth(), 1));
 };
 
-export const getErrorMessage = (err) => err?.response?.data?.message || err?.message || "Something went wrong";
+export const getErrorMessage = (err) => {
+  const serverMessage = err?.response?.data?.message;
+  if (typeof serverMessage === "string" && serverMessage.trim()) return serverMessage.trim();
+
+  if (err?.code === "ECONNABORTED" || err?.code === "ETIMEDOUT") {
+    return "The request timed out. Please try again.";
+  }
+  if (err?.response) {
+    if (err.response.status === 413) return "The request is too large. Reduce the amount of data and try again.";
+    if (err.response.status === 429) return "Too many requests. Please wait a moment and try again.";
+    if (err.response.status >= 500) return "The server couldn't complete the request. Please try again.";
+    return "The request failed. Please try again.";
+  }
+  if (err?.request || err?.code === "ERR_NETWORK" || err?.message === "Network Error") {
+    return "Unable to connect to the server. Check your connection and try again.";
+  }
+  if (typeof err?.message === "string" && err.message.trim()) return err.message.trim();
+  return "Something went wrong. Please try again.";
+};
 
 export const debounce = (fn, ms = 300) => {
   let timer;

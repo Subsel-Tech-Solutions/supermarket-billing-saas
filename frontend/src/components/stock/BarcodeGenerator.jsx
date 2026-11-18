@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { productAPI } from "../../services/api";
-import { numericOnly, blockNonNumericKeys, escapeHtml } from "../../utils/helpers";
+import { numericOnly, blockNonNumericKeys, escapeHtml, getErrorMessage } from "../../utils/helpers";
 
 function useJsBarcode() {
   const [ready, setReady] = useState(!!window.JsBarcode);
@@ -236,12 +236,12 @@ export default function BarcodeGenerator() {
       setSavedBarcodes((prev) => new Set([...prev, form.barcode]));
       toast.success(`"${form.name}" saved to stock!`);
     } catch (err) {
-      const msg = err?.response?.data?.message || err.message;
+      const msg = getErrorMessage(err);
       if (msg?.includes("already") || err?.response?.status === 409) {
         setSavedBarcodes((prev) => new Set([...prev, form.barcode]));
         toast.success("Product already in stock — updated!");
       } else {
-        toast.error("Could not save to stock");
+        toast.error(getErrorMessage(err));
       }
     }
     setSaving(false);

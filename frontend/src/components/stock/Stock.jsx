@@ -415,9 +415,14 @@ function ScanModal({ isOpen, onClose, onScanned }) {
       const res = await productAPI.getByBarcode(barcode);
       setScanned({ ...res.data.data.product, barcode });
       setIsNew(false);
-    } catch {
-      setScanned({ barcode });
-      setIsNew(true);
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        setScanned({ barcode });
+        setIsNew(true);
+      } else {
+        setScanning(true);
+        toast.error(getErrorMessage(err));
+      }
     }
   };
 
@@ -924,7 +929,7 @@ export default function Stock() {
         setShowReportModal(false);
       } catch (err) {
         console.error(err);
-        toast.error("Failed to generate stock report");
+        toast.error(getErrorMessage(err));
       }
       return;
     }
@@ -1017,7 +1022,7 @@ export default function Stock() {
       setShowReportModal(false);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to generate stock report");
+      toast.error(getErrorMessage(err));
     }
   };
   const handleMultiPrint = () => {

@@ -78,8 +78,8 @@ export default function Transactions() {
     try {
       const r = await billAPI.getById(bill.id);
       setSelected(r.data.data.bill);
-    } catch {
-      /* keep list version */
+    } catch (err) {
+      toast.error(getErrorMessage(err));
     }
   };
 

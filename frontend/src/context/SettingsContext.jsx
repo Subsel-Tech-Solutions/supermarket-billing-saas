@@ -2,7 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { platformAPI, settingsAPI } from "../services/api";
 import { applyTheme, applyCachedTheme } from "../utils/theme";
-import { configureFormat } from "../utils/helpers";
+import { configureFormat, getErrorMessage } from "../utils/helpers";
 import { useAuth } from "./AuthContext";
 
 const SettingsContext = createContext(null);
@@ -56,7 +56,7 @@ export const SettingsProvider = ({ children }) => {
           applyTheme({ themeMode: "light", accentColor: r.data.data.defaultAccentColor });
         }
       })
-      .catch(() => {});
+      .catch((err) => console.warn("Could not load platform settings:", getErrorMessage(err)));
   }, [isAuthenticated, isSuperAdmin]);
 
   const apply = useCallback((s) => {
@@ -72,8 +72,8 @@ export const SettingsProvider = ({ children }) => {
     try {
       const r = await settingsAPI.get();
       apply(r.data.data.settings);
-    } catch {
-      /* keep previous */
+    } catch (err) {
+      console.warn("Could not refresh shop settings; keeping the last available settings:", getErrorMessage(err));
     } finally {
       setLoaded(true);
     }

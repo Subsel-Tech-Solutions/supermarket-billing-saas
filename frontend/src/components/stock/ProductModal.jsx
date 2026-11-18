@@ -45,11 +45,11 @@ export default function ProductModal({ isOpen, onClose, product, onSaved }) {
     productAPI
       .getCategories()
       .then((response) => setCategories(response.data.data.categories))
-      .catch(() => {});
+      .catch((err) => toast.error(getErrorMessage(err), { id: "product-categories-load" }));
     supplierAPI
       .getAll({ limit: 1000 })
       .then((response) => setSuppliers(response.data.data.suppliers))
-      .catch(() => {});
+      .catch((err) => toast.error(getErrorMessage(err), { id: "product-suppliers-load" }));
   }, [isOpen]);
 
   useEffect(() => {
