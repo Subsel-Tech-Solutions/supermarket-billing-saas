@@ -99,7 +99,8 @@ Re-running is safe (shops that already have products are skipped; `--force` to o
   `npm start` runs the API and serves the build when `NODE_ENV=production`.
 * **Docker:** `docker compose up --build` → app on http://localhost:3000.
 * Frontend on a different domain: build with `REACT_APP_API_URL=https://api.yourdomain.com/api`
-  and set `CORS_ORIGIN` on the backend.
+  and set `CORS_ORIGIN` on the backend to the exact frontend origin(s). Use HTTPS for both
+  domains in production; cross-domain session and CSRF cookies require `SameSite=None; Secure`.
 
 Self-service password reset emails use Resend. Set `RESEND_API_KEY`, a verified `EMAIL_FROM`
 sender address, and `FRONTEND_URL` (the public frontend origin, with no trailing slash) in the

@@ -11,6 +11,9 @@ const getCsrfCookie = () => {
   return match ? decodeURIComponent(match[1]) : null;
 };
 
+let csrfToken = null;
+let csrfTokenRequest = null;
+
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 30000,
@@ -19,10 +22,28 @@ const api = axios.create({
   xsrfHeaderName: "X-XSRF-TOKEN",
 });
 
-// Explicitly ensure XSRF-TOKEN is attached on mutation requests for defense-in-depth
-api.interceptors.request.use((config) => {
-  const xsrf = getCsrfCookie();
-  if (xsrf && !config.headers["X-XSRF-TOKEN"]) {
+const getCsrfToken = () => {
+  if (csrfTokenRequest) return csrfTokenRequest;
+  csrfTokenRequest = api
+    .get("/auth/csrf")
+    .then(({ data }) => {
+      if (typeof data?.csrfToken !== "string" || !data.csrfToken) {
+        throw new Error("The server did not return a CSRF token.");
+      }
+      csrfToken = data.csrfToken;
+      return csrfToken;
+    })
+    .finally(() => {
+      csrfTokenRequest = null;
+    });
+  return csrfTokenRequest;
+};
+
+// For cross-origin frontends the API cookie is not readable from document.cookie.
+api.interceptors.request.use(async (config) => {
+  const method = (config.method || "get").toLowerCase();
+  if (["post", "put", "patch", "delete"].includes(method) && !config.headers["X-XSRF-TOKEN"]) {
+    const xsrf = csrfToken || getCsrfCookie() || (await getCsrfToken());
     config.headers["X-XSRF-TOKEN"] = xsrf;
   }
   return config;
@@ -47,6 +68,8 @@ const isPublicAuthRoute = () =>
 
 api.interceptors.response.use(
   (res) => {
+    const responseToken = res.headers?.["x-csrf-token"] || res.data?.csrfToken;
+    if (typeof responseToken === "string" && responseToken) csrfToken = responseToken;
     // Any successful response proves the server is reachable again.
     window.dispatchEvent(new CustomEvent("api-reachable"));
     return res;
@@ -132,6 +155,7 @@ export const platformAPI = {
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export const authAPI = {
   register: (data) => api.post("/auth/register", data),
+  validateInvite: (inviteCode) => api.post("/auth/validate-invite", { inviteCode }),
   login: (data) => api.post("/auth/login", data),
   forgotPassword: (data) => api.post("/auth/forgot-password", data),
   resetPassword: (data) => api.post("/auth/reset-password", data),

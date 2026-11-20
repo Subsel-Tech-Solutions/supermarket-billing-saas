@@ -805,6 +805,7 @@ async function installMockApi(page, state = createMockState()) {
         supportPhone: state.platform.supportPhone,
         supportEmail: state.platform.supportEmail,
         allowSignup: state.platform.allowSignup,
+        hasInviteCode: !state.platform.allowSignup && !!String(state.platform.signupInviteCode || state.platform.inviteCode || "").trim(),
         trialDays: state.platform.trialDays,
         defaultAccentColor: state.platform.defaultAccentColor,
         defaultThemeMode: state.platform.defaultThemeMode,
@@ -851,6 +852,14 @@ async function installMockApi(page, state = createMockState()) {
         user: buildLoginUser(u),
         shop: u.isSuperAdmin ? null : activeShop(),
       });
+    }
+
+    if (method === "POST" && path === "/auth/validate-invite") {
+      const expectedCode = state.platform.signupInviteCode || state.platform.inviteCode;
+      if (!state.platform.allowSignup && (!body.inviteCode || String(body.inviteCode).trim() !== expectedCode)) {
+        return fail(403, "Invalid invitation code. Check it and try again.");
+      }
+      return ok({ valid: true }, "Invitation code verified");
     }
 
     if (method === "POST" && path === "/auth/register") {

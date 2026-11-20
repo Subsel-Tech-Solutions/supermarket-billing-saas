@@ -279,14 +279,21 @@ export default function Login() {
                 {loading ? "Signing in…" : "Sign In"}
               </button>
             </form>
-            {platform.allowSignup !== false && (
+            {platform.allowSignup !== false ? (
               <p style={{ marginTop: 22, fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
                 New business?{" "}
                 <Link to="/signup" style={{ color: "var(--accent-dark)", fontWeight: 600 }}>
                   Start your {platform.trialDays || 14}-day free trial
                 </Link>
               </p>
-            )}
+            ) : platform.hasInviteCode ? (
+              <p style={{ marginTop: 22, fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
+                Have an invitation code?{" "}
+                <Link to="/signup" style={{ color: "var(--accent-dark)", fontWeight: 600 }}>
+                  Enter it to register
+                </Link>
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

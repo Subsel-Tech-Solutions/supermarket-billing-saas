@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSettings } from "../../context/SettingsContext";
+import { authAPI } from "../../services/api";
 import { getErrorMessage } from "../../utils/helpers";
 import toast from "react-hot-toast";
 import { Eye, EyeOff, Check, Key } from "lucide-react";
@@ -31,13 +32,35 @@ export default function Signup() {
   });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [inviteLoading, setInviteLoading] = useState(false);
   const [unlockedWithInvite, setUnlockedWithInvite] = useState(false);
   const [inviteInput, setInviteInput] = useState("");
+  const [inviteError, setInviteError] = useState("");
 
   const { register } = useAuth();
   const { platform } = useSettings();
   const navigate = useNavigate();
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const verifyInvite = async () => {
+    const inviteCode = inviteInput.trim();
+    if (!inviteCode) {
+      setInviteError("Enter an invitation code.");
+      return;
+    }
+
+    setInviteLoading(true);
+    setInviteError("");
+    try {
+      await authAPI.validateInvite(inviteCode);
+      set("inviteCode", inviteCode);
+      setUnlockedWithInvite(true);
+    } catch (err) {
+      setInviteError(getErrorMessage(err));
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -73,33 +96,43 @@ export default function Signup() {
             Contact {platform.supportPhone || platform.supportEmail || "the administrator"} to get an account.
           </p>
 
-          <div style={{ marginTop: 24, padding: "16px", background: "var(--bg-sunken)", borderRadius: 12, textAlign: "left" }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
-              Have an invitation code?
-            </label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Enter invite code"
-                value={inviteInput}
-                onChange={(e) => setInviteInput(e.target.value)}
-                style={{ padding: "8px 12px", fontSize: 13 }}
-              />
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ padding: "8px 14px", fontSize: 13 }}
-                onClick={() => {
-                  if (!inviteInput.trim()) return toast.error("Enter an invite code");
-                  set("inviteCode", inviteInput.trim());
-                  setUnlockedWithInvite(true);
-                }}
-              >
-                Continue
-              </button>
+          {platform.hasInviteCode && (
+            <div style={{ marginTop: 24, padding: "16px", background: "var(--bg-sunken)", borderRadius: 12, textAlign: "left" }}>
+              <label htmlFor="signup-invite-code" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
+                Have an invitation code?
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  id="signup-invite-code"
+                  type="text"
+                  className="input-field"
+                  placeholder="Enter invite code"
+                  value={inviteInput}
+                  disabled={inviteLoading}
+                  onChange={(e) => {
+                    setInviteInput(e.target.value);
+                    setInviteError("");
+                  }}
+                  style={{ padding: "8px 12px", fontSize: 13 }}
+                />
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ padding: "8px 14px", fontSize: 13 }}
+                  onClick={verifyInvite}
+                  disabled={inviteLoading}
+                >
+                  {inviteLoading && <Spinner size={13} color="var(--bg)" />}
+                  {inviteLoading ? "Checking…" : "Verify & continue"}
+                </button>
+              </div>
+              {inviteError && (
+                <p role="alert" style={{ marginTop: 8, color: "var(--danger)", fontSize: 12.5 }}>
+                  {inviteError}
+                </p>
+              )}
             </div>
-          </div>
+          )}
 
           <Link to="/login" className="btn-ghost" style={{ marginTop: 18, textDecoration: "none", width: "100%", justifyContent: "center" }}>
             Back to sign in

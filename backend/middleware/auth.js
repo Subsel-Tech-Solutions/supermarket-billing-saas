@@ -5,7 +5,10 @@ const { User, Shop, RefreshToken } = require("../models/master");
 const { getTenant } = require("../tenant/tenantManager");
 const { setCsrfCookie } = require("./csrf");
 
-const isProd = process.env.NODE_ENV === "production";
+const cookieOptions = () => {
+  const isProd = process.env.NODE_ENV === "production";
+  return { secure: isProd, sameSite: isProd ? "none" : "lax" };
+};
 
 const JWT_SECRET = () => {
   const s = process.env.JWT_SECRET;
@@ -65,8 +68,7 @@ const setAuthCookies = async (res, user, existingFamily = null) => {
   // Access token cookie (HTTP-only, 15 minutes)
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: "lax",
+    ...cookieOptions(),
     path: "/",
     maxAge: ACCESS_COOKIE_MAX_AGE,
   });
@@ -74,8 +76,7 @@ const setAuthCookies = async (res, user, existingFamily = null) => {
   // Refresh token cookie (HTTP-only, 7 days, restricted to auth routes)
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: "lax",
+    ...cookieOptions(),
     path: "/api/auth",
     maxAge: REFRESH_COOKIE_MAX_AGE,
   });
@@ -87,10 +88,10 @@ const setAuthCookies = async (res, user, existingFamily = null) => {
 };
 
 const clearAuthCookies = (res) => {
-  const opts = { httpOnly: true, secure: isProd, sameSite: "lax" };
+  const opts = { httpOnly: true, ...cookieOptions() };
   res.clearCookie("accessToken", { ...opts, path: "/" });
   res.clearCookie("refreshToken", { ...opts, path: "/api/auth" });
-  res.clearCookie("XSRF-TOKEN", { secure: isProd, sameSite: "lax", path: "/" });
+  res.clearCookie("XSRF-TOKEN", { ...cookieOptions(), path: "/" });
   res.clearCookie("adminAccessToken", { ...opts, path: "/" });
   res.clearCookie("adminRefreshToken", { ...opts, path: "/api/auth" });
 };
