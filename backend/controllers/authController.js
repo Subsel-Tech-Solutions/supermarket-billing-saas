@@ -20,6 +20,12 @@ const { sendPasswordResetEmail } = require("../utils/passwordResetEmail");
 
 const JWT_REFRESH_SECRET = () => process.env.JWT_REFRESH_SECRET || `${process.env.JWT_SECRET}_refresh`;
 
+const isValidInviteCode = (candidate, platform, env = process.env) => {
+  const expected = String(platform.signupInviteCode || env.SIGNUP_INVITE_CODE || "").trim();
+  const supplied = String(candidate || "").trim();
+  return Boolean(expected && supplied && supplied === expected);
+};
+
 const sessionPayload = async (user, shop) => {
   const platform = await getPlatformSettings();
   const superAdmin = isSuperAdminUser(user);
@@ -28,6 +34,15 @@ const sessionPayload = async (user, shop) => {
     shop: shopPayload(shop, platform, superAdmin),
   };
 };
+
+// POST /api/auth/validate-invite — validate an invitation before showing registration
+const validateInvite = asyncHandler(async (req, res) => {
+  const platform = await getPlatformSettings();
+  if (!platform.allowSignup && !isValidInviteCode(req.body?.inviteCode, platform)) {
+    throw new HttpError(403, "Invalid invitation code. Check it and try again.", "INVALID_INVITE_CODE");
+  }
+  res.json({ success: true, data: { valid: true } });
+});
 
 // POST /api/auth/register — public SaaS signup (creates business + owner + private DB + cookies)
 const register = asyncHandler(async (req, res) => {
@@ -40,13 +55,8 @@ const register = asyncHandler(async (req, res) => {
 
   // 2. Check signup status & invite code
   const platform = await getPlatformSettings();
-  const inviteCode = String(body.inviteCode || "").trim();
-  const configuredInvite = String(platform.signupInviteCode || process.env.SIGNUP_INVITE_CODE || "").trim();
-
-  if (!platform.allowSignup) {
-    if (!configuredInvite || inviteCode !== configuredInvite) {
-      throw new HttpError(403, "New signups are currently closed or require a valid invite code. Contact the administrator.", "SIGNUP_CLOSED");
-    }
+  if (!platform.allowSignup && !isValidInviteCode(body.inviteCode, platform)) {
+    throw new HttpError(403, "New signups are currently closed or require a valid invite code. Contact the administrator.", "SIGNUP_CLOSED");
   }
 
   const { shopName, username, email, password, phone, address, businessType } = body;
@@ -297,4 +307,4 @@ const resetPassword = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Password reset. You can now sign in with your new password." });
 });
 
-module.exports = { register, login, refresh, logout, getMe, getCsrf, updateProfile, changePassword, forgotPassword, resetPassword };
+module.exports = { register, validateInvite, login, refresh, logout, getMe, getCsrf, updateProfile, changePassword, forgotPassword, resetPassword, isValidInviteCode };

@@ -2,6 +2,43 @@ const { test, expect } = require("@playwright/test");
 const { createMockState, installMockApi, signIn, fieldControl, toggleSwitch } = require("./helpers/mockBackend");
 
 test.describe("Tenant Inventory: Stock, Barcodes, Suppliers & Purchases", () => {
+  test("supplier layout fits mobile, tablet, and desktop viewports", async ({ page }) => {
+    const state = createMockState();
+    await installMockApi(page, state);
+    await signIn(page, "owner@freshmart.com", "owner-password");
+    await page.locator("nav").getByRole("link", { name: "Suppliers" }).click();
+    await expect(page).toHaveURL(/\/suppliers$/);
+    await expect(page.getByText("Metro Wholesale Distributors")).toBeVisible();
+
+    for (const viewport of [
+      { width: 390, height: 844, mobileNavigation: true, stackedRows: true },
+      { width: 768, height: 1024, mobileNavigation: true, stackedRows: false },
+      { width: 1024, height: 768, mobileNavigation: false, stackedRows: false },
+      { width: 1440, height: 900, mobileNavigation: false, stackedRows: false },
+    ]) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await expect(page.locator(".mobile-nav-bar")).toHaveCSS(
+        "display",
+        viewport.mobileNavigation ? "flex" : "none",
+      );
+      await expect(page.locator("aside.desktop-sidebar")).toHaveCSS(
+        "display",
+        viewport.mobileNavigation ? "none" : "block",
+      );
+      const rowDisplay = await page.locator(".table-stack tbody tr").first().evaluate((row) => getComputedStyle(row).display);
+      expect(rowDisplay).toBe(viewport.stackedRows ? "block" : "table-row");
+      const fitsViewport = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      expect(fitsViewport, `horizontal overflow at ${viewport.width}px`).toBe(true);
+    }
+
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.locator(".mobile-nav-layer")).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(page.locator(".mobile-nav-layer")).toHaveCount(0);
+    expect(await page.locator("body").evaluate((body) => body.style.overflow)).not.toBe("hidden");
+  });
+
   test("stock CRUD, filters, validation, stock adjustment, history, scan, bulk import, print mode, report & delete", async ({ page }) => {
     test.slow();
     const state = createMockState();

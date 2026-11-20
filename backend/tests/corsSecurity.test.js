@@ -1,6 +1,6 @@
 // tests/corsSecurity.test.js — Automated test suite for CORS origin whitelisting & credentials security
 const assert = require("assert");
-const { buildCorsOptions, isLocalhost } = require("../utils/corsConfig");
+const { buildCorsOptions, isLocalhost, isAllowedOrigin } = require("../utils/corsConfig");
 
 let passed = 0;
 const check = async (name, fn) => {
@@ -59,6 +59,21 @@ const runValidator = (corsOptions, origin) =>
 
     const res3 = await runValidator(opts, "https://attacker.com");
     assert.strictEqual(res3.allowed, false, "Non-whitelisted origin must be blocked");
+    assert.strictEqual(opts.exposedHeaders.includes("X-CSRF-Token"), true, "Frontend must be able to read the CSRF response header");
+    assert.strictEqual(
+      isAllowedOrigin("https://supermart.example.com", {
+        NODE_ENV: "production",
+        CORS_ORIGIN: "https://supermart.example.com",
+      }),
+      true,
+    );
+    assert.strictEqual(
+      isAllowedOrigin("https://attacker.com", {
+        NODE_ENV: "production",
+        CORS_ORIGIN: "https://supermart.example.com",
+      }),
+      false,
+    );
   });
 
   await check("Production & Dev: allows server-to-server / curl requests with no origin header", async () => {

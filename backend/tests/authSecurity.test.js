@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 
 process.env.JWT_SECRET = "super_secret_test_key_at_least_32_chars_long_12345";
 process.env.JWT_REFRESH_SECRET = "super_secret_refresh_test_key_at_least_32_chars_long_12345";
+process.env.NODE_ENV = "test";
 
 const {
   signAccessToken,
@@ -33,6 +34,7 @@ const check = async (name, fn) => {
 const createMockRes = () => {
   const cookies = {};
   const clearedCookies = [];
+  const headers = {};
   let statusCode = 200;
   let jsonBody = null;
 
@@ -54,8 +56,13 @@ const createMockRes = () => {
       jsonBody = body;
       return res;
     },
+    setHeader: (name, value) => {
+      headers[name] = value;
+      return res;
+    },
     getCookies: () => cookies,
     getCleared: () => clearedCookies,
+    getHeaders: () => headers,
     getStatus: () => statusCode,
     getBody: () => jsonBody,
   };
@@ -108,6 +115,7 @@ const createMockRes = () => {
       assert(cookies.accessToken, "accessToken cookie must exist");
       assert.strictEqual(cookies.accessToken.opts.httpOnly, true, "accessToken must be httpOnly");
       assert.strictEqual(cookies.accessToken.opts.sameSite, "lax", "accessToken must have sameSite=lax");
+      assert.strictEqual(cookies.accessToken.opts.secure, false, "development cookies should not require HTTPS");
       assert.strictEqual(cookies.accessToken.opts.path, "/", "accessToken must have path=/");
       assert.strictEqual(cookies.accessToken.opts.maxAge, 15 * 60 * 1000, "accessToken maxAge must be 15m");
 
@@ -120,6 +128,7 @@ const createMockRes = () => {
       // CSRF Token Cookie
       assert(cookies["XSRF-TOKEN"], "XSRF-TOKEN cookie must exist");
       assert.strictEqual(cookies["XSRF-TOKEN"].opts.httpOnly, false, "XSRF-TOKEN must be readable by JS");
+      assert.strictEqual(res.getHeaders()["X-CSRF-Token"], cookies["XSRF-TOKEN"].val);
 
       // Database Record
       assert(savedRecord, "RefreshToken must be recorded in DB");
@@ -200,6 +209,110 @@ const createMockRes = () => {
       calledNext = true;
     });
     assert.strictEqual(calledNext, true, "Must allow matching CSRF token");
+  });
+
+  await check("CSRF middleware rejects requests from untrusted cross-domain origins", () => {
+    const previousEnv = { NODE_ENV: process.env.NODE_ENV, CORS_ORIGIN: process.env.CORS_ORIGIN };
+    process.env.NODE_ENV = "production";
+    process.env.CORS_ORIGIN = "https://app.example.com";
+    try {
+      const req = {
+        method: "POST",
+        headers: { origin: "https://attacker.example.net" },
+        cookies: { accessToken: "some.cookie.val" },
+      };
+      const res = createMockRes();
+      let calledNext = false;
+      verifyCsrf(req, res, () => {
+        calledNext = true;
+      });
+      assert.strictEqual(calledNext, false);
+      assert.strictEqual(res.getStatus(), 403);
+      assert.strictEqual(res.getBody().code, "CSRF_ORIGIN");
+    } finally {
+      if (previousEnv.NODE_ENV === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnv.NODE_ENV;
+      if (previousEnv.CORS_ORIGIN === undefined) delete process.env.CORS_ORIGIN;
+      else process.env.CORS_ORIGIN = previousEnv.CORS_ORIGIN;
+    }
+  });
+
+  await check("CSRF middleware allows same-origin production requests without CORS_ORIGIN", () => {
+    const previousEnv = { NODE_ENV: process.env.NODE_ENV, CORS_ORIGIN: process.env.CORS_ORIGIN };
+    process.env.NODE_ENV = "production";
+    delete process.env.CORS_ORIGIN;
+    try {
+      const token = generateCsrfToken();
+      const req = {
+        method: "POST",
+        protocol: "https",
+        headers: { origin: "https://app.example.com", host: "app.example.com", "x-xsrf-token": token },
+        cookies: { accessToken: "some.cookie.val", "XSRF-TOKEN": token },
+      };
+      const res = createMockRes();
+      let calledNext = false;
+      verifyCsrf(req, res, () => {
+        calledNext = true;
+      });
+      assert.strictEqual(calledNext, true);
+    } finally {
+      if (previousEnv.NODE_ENV === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnv.NODE_ENV;
+      if (previousEnv.CORS_ORIGIN === undefined) delete process.env.CORS_ORIGIN;
+      else process.env.CORS_ORIGIN = previousEnv.CORS_ORIGIN;
+    }
+  });
+
+  await check("CSRF middleware allows allowlisted cross-domain requests with a matching token", () => {
+    const previousEnv = { NODE_ENV: process.env.NODE_ENV, CORS_ORIGIN: process.env.CORS_ORIGIN };
+    process.env.NODE_ENV = "production";
+    process.env.CORS_ORIGIN = "https://app.example.com";
+    try {
+      const token = generateCsrfToken();
+      const req = {
+        method: "POST",
+        protocol: "https",
+        headers: { origin: "https://app.example.com", host: "api.example.net", "x-xsrf-token": token },
+        cookies: { accessToken: "some.cookie.val", "XSRF-TOKEN": token },
+      };
+      const res = createMockRes();
+      let calledNext = false;
+      verifyCsrf(req, res, () => {
+        calledNext = true;
+      });
+      assert.strictEqual(calledNext, true);
+    } finally {
+      if (previousEnv.NODE_ENV === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnv.NODE_ENV;
+      if (previousEnv.CORS_ORIGIN === undefined) delete process.env.CORS_ORIGIN;
+      else process.env.CORS_ORIGIN = previousEnv.CORS_ORIGIN;
+    }
+  });
+
+  await check("production auth cookies support cross-domain credentials", async () => {
+    const previousEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const res = createMockRes();
+    const { RefreshToken } = require("../models/master");
+    const origCreate = RefreshToken.create;
+    RefreshToken.create = async (data) => data;
+    try {
+      await setAuthCookies(res, { id: 11, shopId: 3, tokenVersion: 0 });
+      const cookies = res.getCookies();
+      ["accessToken", "refreshToken", "XSRF-TOKEN"].forEach((name) => {
+        assert.strictEqual(cookies[name].opts.sameSite, "none");
+        assert.strictEqual(cookies[name].opts.secure, true);
+      });
+      clearAuthCookies(res);
+      res.getCleared().forEach(({ opts }) => {
+        assert.strictEqual(opts.sameSite, "none");
+        assert.strictEqual(opts.secure, true);
+      });
+    } finally {
+      RefreshToken.create = origCreate;
+      if (previousEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnv;
+    }
   });
 
   // 6. Token Revocation via tokenVersion in protect Middleware

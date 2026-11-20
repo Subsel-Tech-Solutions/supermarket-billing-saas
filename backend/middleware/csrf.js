@@ -1,24 +1,50 @@
 // middleware/csrf.js — Double-submit CSRF protection with Origin verification
 const crypto = require("crypto");
+const { isAllowedOrigin } = require("../utils/corsConfig");
 
 const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
-const isProd = process.env.NODE_ENV === "production";
 
 const generateCsrfToken = () => crypto.randomBytes(32).toString("hex");
 
 const setCsrfCookie = (res, token = generateCsrfToken()) => {
+  const isProd = process.env.NODE_ENV === "production";
   res.cookie("XSRF-TOKEN", token, {
     httpOnly: false, // Accessible to JavaScript/Axios to copy into request header
     secure: isProd,
-    sameSite: "lax",
+    sameSite: isProd ? "none" : "lax",
     path: "/",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
+  res.setHeader("X-CSRF-Token", token);
   return token;
 };
 
 const verifyCsrf = (req, res, next) => {
   if (SAFE_METHODS.includes(req.method)) return next();
+
+  let origin = req.headers?.origin;
+  if (!origin && req.headers?.referer) {
+    try {
+      origin = new URL(req.headers.referer).origin;
+    } catch {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid request origin.",
+        code: "CSRF_ORIGIN",
+      });
+    }
+  }
+  const requestHost = req.get ? req.get("host") : req.headers?.host;
+  const requestOrigin = requestHost
+    ? `${req.protocol || (req.secure ? "https" : "http")}://${requestHost}`
+    : null;
+  if (origin && origin !== requestOrigin && !isAllowedOrigin(origin)) {
+    return res.status(403).json({
+      success: false,
+      message: "Request origin is not allowed.",
+      code: "CSRF_ORIGIN",
+    });
+  }
 
   // If request is authenticated via cookies, verify CSRF token
   const hasAuthCookie = !!(req.cookies?.accessToken || req.cookies?.refreshToken);

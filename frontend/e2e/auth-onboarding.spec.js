@@ -8,30 +8,30 @@ test.describe("Auth, Onboarding & Account Flows", () => {
     });
     await installMockApi(page, state);
 
-    await page.goto("/signup");
+    await page.goto("/login");
+    await page.getByRole("link", { name: "Enter it to register" }).click();
+    await expect(page).toHaveURL(/\/signup$/);
     await expect(page.getByRole("heading", { name: "Signups are closed" })).toBeVisible();
     await expect(page.getByPlaceholder("Enter invite code")).toBeVisible();
 
-    // First unlock with wrong invite code — form opens locally, backend rejects on submit
+    let registrationRequests = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().endsWith("/auth/register")) registrationRequests += 1;
+    });
+
+    // An invalid code must not open the registration form or submit a registration.
     await page.getByPlaceholder("Enter invite code").fill("WRONG-CODE");
-    await page.getByRole("button", { name: "Continue" }).click();
-
-    await expect(page.getByRole("heading", { name: "Create your store" })).toBeVisible();
-    await page.getByPlaceholder("e.g. Metro Supermarket").fill("Invite Only Mart");
-    await page.getByPlaceholder("Owner name").fill("Ramesh");
-    await page.getByPlaceholder("+91 …").fill("9876543219");
-    await page.getByPlaceholder("you@store.com").fill("ramesh@invitemart.com");
-    await page.getByPlaceholder("Min 6 characters").fill("secret123");
-    await page.getByPlaceholder("Repeat password").fill("secret123");
-    await page.getByRole("button", { name: "Create store" }).click();
-
-    await expect(page.getByText("Invalid invite code")).toBeVisible();
+    await page.getByRole("button", { name: "Verify & continue" }).click();
+    await expect(page.getByRole("heading", { name: "Signups are closed" })).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveText("Invalid invitation code. Check it and try again.");
+    await expect(page.getByPlaceholder("e.g. Metro Supermarket")).toHaveCount(0);
+    expect(registrationRequests).toBe(0);
     await expect(page).toHaveURL(/\/signup$/);
 
-    // Reload, enter valid invite code, and complete signup
-    await page.goto("/signup");
+    // A valid code is checked by the server before the form is opened.
     await page.getByPlaceholder("Enter invite code").fill("INVITE2026");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Verify & continue" }).click();
+    await expect(page.getByRole("heading", { name: "Create your store" })).toBeVisible();
 
     await page.getByPlaceholder("e.g. Metro Supermarket").fill("Invite Only Mart");
     await page.getByPlaceholder("Owner name").fill("Ramesh");

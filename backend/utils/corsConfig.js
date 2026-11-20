@@ -8,52 +8,40 @@ const isLocalhost = (origin) => {
   }
 };
 
-const buildCorsOptions = (env = process.env) => {
+const isAllowedOrigin = (origin, env = process.env) => {
+  if (!origin) return true;
+
   const isProd = env.NODE_ENV === "production";
-  const raw = env.CORS_ORIGIN || "";
-  const allowed = raw
+  const allowed = String(env.CORS_ORIGIN || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
 
+  if (isProd) return allowed.length > 0 && !allowed.includes("*") && allowed.includes(origin);
+  if (allowed.length === 0 || allowed.includes("*")) return true;
+  return allowed.includes(origin) || isLocalhost(origin);
+};
+
+const buildCorsOptions = (env = process.env) => {
   const originValidator = (origin, callback) => {
-    // 1. Requests with no origin (mobile apps, curl, Postman, server-to-server health checks)
-    if (!origin) {
-      return callback(null, true);
+    if (
+      origin &&
+      env.NODE_ENV === "production" &&
+      (!String(env.CORS_ORIGIN || "").trim() ||
+        String(env.CORS_ORIGIN).split(",").map((s) => s.trim()).includes("*"))
+    ) {
+      console.warn(
+        `[CORS] Rejected cross-origin request from "${origin}". In production, CORS_ORIGIN must be set to explicit trusted origins and cannot be "*".`,
+      );
     }
-
-    // 2. Production mode: strictly enforce explicit whitelist, disallow '*' with credentials
-    if (isProd) {
-      if (allowed.length === 0 || allowed.includes("*")) {
-        console.warn(
-          `[CORS] Rejected cross-origin request from "${origin}". In production, CORS_ORIGIN must be set to explicit trusted origins and cannot be "*".`,
-        );
-        return callback(null, false);
-      }
-      if (allowed.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, false);
-    }
-
-    // 3. Development / Test mode:
-    if (allowed.length === 0 || allowed.includes("*")) {
-      return callback(null, true);
-    }
-    if (allowed.includes(origin)) {
-      return callback(null, true);
-    }
-    if (isLocalhost(origin)) {
-      return callback(null, true);
-    }
-
-    return callback(null, false);
+    return callback(null, isAllowedOrigin(origin, env));
   };
 
   return {
     origin: originValidator,
     credentials: true,
+    exposedHeaders: ["X-CSRF-Token"],
   };
 };
 
-module.exports = { buildCorsOptions, isLocalhost };
+module.exports = { buildCorsOptions, isLocalhost, isAllowedOrigin };

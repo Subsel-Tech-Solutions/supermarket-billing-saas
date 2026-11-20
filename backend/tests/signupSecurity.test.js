@@ -2,6 +2,7 @@
 const assert = require("assert");
 const { HttpError } = require("../utils/helpers");
 const { publicSignupEnabledByDefault, migratePlatformSignupPolicy, SIGNUP_POLICY_VERSION } = require("../utils/defaults");
+const { isValidInviteCode } = require("../controllers/authController");
 
 console.log("Starting Public Signup Security & Abuse Prevention Test Suite...\n");
 
@@ -37,6 +38,13 @@ test("migrates legacy default-on platform settings to closed exactly once", () =
 test("allows explicit environment opt-in when migrating legacy settings", () => {
   const migrated = migratePlatformSignupPolicy({ allowSignup: true }, true);
   assert.strictEqual(migrated.allowSignup, true);
+});
+
+test("validates invite codes from platform settings or the environment without accepting empty codes", () => {
+  assert.strictEqual(isValidInviteCode(" VIP2026 ", { signupInviteCode: "VIP2026" }, {}), true);
+  assert.strictEqual(isValidInviteCode("vip2026", { signupInviteCode: "VIP2026" }, {}), false);
+  assert.strictEqual(isValidInviteCode("VIP2026", { signupInviteCode: "" }, { SIGNUP_INVITE_CODE: "VIP2026" }), true);
+  assert.strictEqual(isValidInviteCode("", { signupInviteCode: "" }, {}), false);
 });
 
 // ── 2. Honeypot & Bot Detection Tests ───────────────────────────────────────

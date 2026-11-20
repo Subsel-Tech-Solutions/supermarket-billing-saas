@@ -299,12 +299,15 @@ export default function Sidebar() {
   useEffect(() => {
     if (!mobileOpen) return undefined;
     const onKey = (e) => e.key === "Escape" && setMobileOpen(false);
+    const onResize = () => window.innerWidth > 860 && setMobileOpen(false);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onResize);
     };
   }, [mobileOpen]);
 
@@ -314,7 +317,7 @@ export default function Sidebar() {
           its own guesswork padding to avoid it covering the title. A real bar reserves
           the space once, and shows which shop the till belongs to. */}
       <div
-        className="md:hidden no-print flex items-center"
+        className="mobile-nav-bar no-print"
         style={{
           position: "fixed",
           top: 0,
@@ -355,7 +358,7 @@ export default function Sidebar() {
       </div>
 
       {mobileOpen && (
-        <div className="md:hidden" style={{ position: "fixed", inset: 0, zIndex: 60 }}>
+        <div className="mobile-nav-layer" style={{ position: "fixed", inset: 0, zIndex: 60 }}>
           <div
             style={{ position: "absolute", inset: 0, background: "var(--overlay)", backdropFilter: "blur(5px)" }}
             onClick={() => setMobileOpen(false)}
@@ -387,7 +390,7 @@ export default function Sidebar() {
       )}
 
       <aside
-        className="hidden md:block no-print"
+        className="desktop-sidebar no-print"
         style={{
           width: collapsed ? 58 : 212,
           flexShrink: 0,

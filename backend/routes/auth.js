@@ -4,6 +4,7 @@ const { protect } = require("../middleware/auth");
 const { loginLimiter, signupLimiter, passwordResetLimiter } = require("../middleware/security");
 
 router.post("/register", signupLimiter, c.register);
+router.post("/validate-invite", signupLimiter, c.validateInvite);
 router.post("/login", loginLimiter, c.login);
 router.post("/forgot-password", passwordResetLimiter, c.forgotPassword);
 router.post("/reset-password", passwordResetLimiter, c.resetPassword);

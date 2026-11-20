@@ -340,7 +340,7 @@ const loginAs = asyncHandler(async (req, res) => {
     res.cookie("adminAccessToken", req.cookies.accessToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: "lax",
+      sameSite: isProd ? "none" : "lax",
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -349,7 +349,7 @@ const loginAs = asyncHandler(async (req, res) => {
     res.cookie("adminRefreshToken", req.cookies.refreshToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: "lax",
+      sameSite: isProd ? "none" : "lax",
       path: "/api/auth",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -385,7 +385,7 @@ const returnToAdmin = asyncHandler(async (req, res) => {
   res.cookie("accessToken", adminAccessToken, {
     httpOnly: true,
     secure: isProd,
-    sameSite: "lax",
+    sameSite: isProd ? "none" : "lax",
     path: "/",
     maxAge: 15 * 60 * 1000,
   });
@@ -393,13 +393,13 @@ const returnToAdmin = asyncHandler(async (req, res) => {
     res.cookie("refreshToken", adminRefreshToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: "lax",
+      sameSite: isProd ? "none" : "lax",
       path: "/api/auth",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
   }
-  res.clearCookie("adminAccessToken", { httpOnly: true, secure: isProd, sameSite: "lax", path: "/" });
-  res.clearCookie("adminRefreshToken", { httpOnly: true, secure: isProd, sameSite: "lax", path: "/api/auth" });
+  res.clearCookie("adminAccessToken", { httpOnly: true, secure: isProd, sameSite: isProd ? "none" : "lax", path: "/" });
+  res.clearCookie("adminRefreshToken", { httpOnly: true, secure: isProd, sameSite: isProd ? "none" : "lax", path: "/api/auth" });
 
   const platform = await getPlatformSettings();
   res.json({
