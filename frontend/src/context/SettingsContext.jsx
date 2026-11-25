@@ -33,7 +33,7 @@ const FALLBACK = {
 applyCachedTheme();
 
 export const SettingsProvider = ({ children }) => {
-  const { isAuthenticated, isSuperAdmin } = useAuth();
+  const { isAuthenticated, isSuperAdmin, user } = useAuth();
   const [settings, setSettings] = useState(FALLBACK);
   const [platform, setPlatform] = useState({ platformName: "SuperMart POS", allowSignup: false, hasInviteCode: false, trialDays: 14 });
   const [loaded, setLoaded] = useState(false);
@@ -70,14 +70,14 @@ export const SettingsProvider = ({ children }) => {
 
   const reload = useCallback(async () => {
     try {
-      const r = await settingsAPI.get();
+      const r = user?.role === "owner" ? await settingsAPI.get() : await settingsAPI.getPos();
       apply(r.data.data.settings);
     } catch (err) {
       console.warn("Could not refresh shop settings; keeping the last available settings:", getErrorMessage(err));
     } finally {
       setLoaded(true);
     }
-  }, [apply]);
+  }, [apply, user?.role]);
 
   useEffect(() => {
     // A platform admin runs the SaaS and has no shop of their own, so there are no shop

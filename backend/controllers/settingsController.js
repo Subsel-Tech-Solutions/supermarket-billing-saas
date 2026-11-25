@@ -13,6 +13,19 @@ const ENUMS = {
 };
 const LIMITS = { fontScale: [85, 120], maxBillDiscountPercent: [0, 100], timezoneOffsetMinutes: [-720, 840] };
 const PAYMENT_METHODS = ["cash", "upi", "card", "credit", "wallet", "cheque", "other"];
+const POS_SETTING_KEYS = [
+  "businessName", "legalName", "tagline", "phone", "email", "website", "address", "city", "state", "pincode",
+  "gstNumber", "fssaiNumber", "logo",
+  "themeMode", "accentColor", "sidebarStyle", "fontScale", "compactMode",
+  "currencySymbol", "currencyCode", "locale", "timezoneOffsetMinutes",
+  "taxEnabled", "pricesIncludeTax", "defaultTaxRate", "taxLabel", "roundOff",
+  "billPrefix", "returnPrefix", "allowCreditSale", "requireCustomerForCredit", "maxBillDiscountPercent",
+  "cashierCanDiscount", "cashierCanCancel", "paymentMethods", "defaultPaymentMethod", "autoPrintAfterSale",
+  "receiptFormat", "showLogoOnReceipt", "showMrpOnReceipt", "showSavingsOnReceipt", "showTaxBreakupOnReceipt",
+  "showCashierOnReceipt", "receiptHeader", "receiptFooter", "termsAndConditions",
+  "lowStockThreshold", "units", "categories",
+  "loyaltyEnabled", "loyaltyEarnPer100", "loyaltyPointValue", "loyaltyMinRedeem",
+];
 
 // Coerce each incoming value to the type of its default
 const sanitize = (key, value) => {
@@ -53,6 +66,18 @@ const sanitize = (key, value) => {
 const getSettings = asyncHandler(async (req, res) => {
   const row = await req.db.Setting.findByPk(1);
   res.json({ success: true, data: { settings: mergeSettings(row ? row.data : {}) } });
+});
+
+// Runtime configuration used by all staff to operate the POS; management-only
+// configuration remains available only through GET /api/settings.
+const getPosSettings = asyncHandler(async (req, res) => {
+  const row = await req.db.Setting.findByPk(1);
+  const settings = mergeSettings(row ? row.data : {});
+  const posSettings = {};
+  POS_SETTING_KEYS.forEach((key) => {
+    posSettings[key] = settings[key];
+  });
+  res.json({ success: true, data: { settings: posSettings } });
 });
 
 // PUT /api/settings  (owner)
@@ -119,4 +144,4 @@ const resetAppearance = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Appearance reset", data: { settings: next } });
 });
 
-module.exports = { getSettings, updateSettings, resetAppearance };
+module.exports = { getSettings, getPosSettings, updateSettings, resetAppearance };

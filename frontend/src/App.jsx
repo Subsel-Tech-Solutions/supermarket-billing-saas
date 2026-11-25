@@ -101,12 +101,12 @@ export default function App() {
                 <Route index element={<Home />} />
 
                 {/* ── Shop (till) ── hidden from the platform admin ── */}
-                <Route path="dashboard" element={<ShopOnly><Dashboard /></ShopOnly>} />
+                <Route path="dashboard" element={<ShopOnly><ProtectedRoute roles={OWNER_MANAGER}><Dashboard /></ProtectedRoute></ShopOnly>} />
                 <Route path="billing" element={<ShopOnly><Billing /></ShopOnly>} />
                 <Route path="transactions" element={<ShopOnly><Transactions /></ShopOnly>} />
                 <Route path="customers" element={<ShopOnly><Customers /></ShopOnly>} />
                 <Route path="customers/:id" element={<ShopOnly><CustomerDetails /></ShopOnly>} />
-                <Route path="day-end" element={<ShopOnly><DayEnd /></ShopOnly>} />
+                <Route path="day-end" element={<ShopOnly><ProtectedRoute roles={OWNER_MANAGER}><DayEnd /></ProtectedRoute></ShopOnly>} />
                 <Route path="stock" element={<ShopOnly><ProtectedRoute roles={OWNER_MANAGER}><Stock /></ProtectedRoute></ShopOnly>} />
                 <Route path="barcode" element={<ShopOnly><ProtectedRoute roles={OWNER_MANAGER}><BarcodeGenerator /></ProtectedRoute></ShopOnly>} />
                 <Route path="purchases" element={<ShopOnly><ProtectedRoute roles={OWNER_MANAGER}><Purchases /></ProtectedRoute></ShopOnly>} />

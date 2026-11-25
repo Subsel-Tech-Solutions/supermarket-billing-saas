@@ -173,7 +173,6 @@ async function seed() {
     roundOff: true,
     billPrefix: "INV",
     returnPrefix: "RET",
-    allowNegativeStock: false,
     cashierCanDiscount: true,
     cashierCanCancel: true,
     allowCreditSale: true,

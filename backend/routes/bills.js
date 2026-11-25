@@ -1,9 +1,9 @@
 const router = require("express").Router();
 const c = require("../controllers/billingController");
 const { generateInvoice } = require("../controllers/invoiceController");
-const { protect, requireActiveSubscription } = require("../middleware/auth");
+const { protect, authorize, requireActiveSubscription } = require("../middleware/auth");
 
-router.use(protect, requireActiveSubscription);
+router.use(protect, requireActiveSubscription, authorize("bills:use"));
 
 router.get("/", c.getBills);
 router.post("/", c.createBill);

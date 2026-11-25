@@ -77,6 +77,41 @@ const check = async (name, fn) => {
     assert.strictEqual(res2, null);
   });
 
+  await check("required audit records use the business transaction and propagate failures", async () => {
+    const transaction = {};
+    let options;
+    const req = {
+      user: { id: 1, username: "manager1", role: "manager" },
+      db: {
+        AuditLog: {
+          create: async (data, createOptions) => {
+            options = createOptions;
+            return data;
+          },
+        },
+      },
+    };
+    const entry = await logAudit(req, {
+      action: "BILL_RETURN",
+      entityType: "bill",
+      entityId: "INV-000125",
+      transaction,
+      required: true,
+    });
+
+    assert.strictEqual(entry.action, "BILL_RETURN");
+    assert.strictEqual(options.transaction, transaction);
+    await assert.rejects(
+      () => logAudit({ db: { AuditLog: { create: async () => { throw new Error("audit write failed"); } } } }, {
+        action: "BILL_RETURN",
+        entityType: "bill",
+        transaction,
+        required: true,
+      }),
+      /audit write failed/,
+    );
+  });
+
   await check("BILL_CANCELLED action logs correct audit trail and diff", async () => {
     const req = createMockReq({ id: 2, username: "owner_admin", role: "owner" });
     const entry = await logAudit(req, {

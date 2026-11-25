@@ -60,11 +60,11 @@ const SECTIONS = [
   {
     title: "Sell",
     items: [
-      { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+      { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", roles: ["owner", "manager"] },
       { to: "/billing", icon: ShoppingCart, label: "Billing" },
       { to: "/transactions", icon: FileText, label: "Sales History" },
       { to: "/customers", icon: Users, label: "Customers" },
-      { to: "/day-end", icon: Calculator, label: "Day Closing" },
+      { to: "/day-end", icon: Calculator, label: "Day Closing", roles: ["owner", "manager"] },
     ],
   },
   {

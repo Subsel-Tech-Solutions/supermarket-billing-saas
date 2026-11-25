@@ -183,10 +183,58 @@ const requireActiveSubscription = (req, res, next) => {
   return deny(res, 402, "Your subscription / trial has expired. Please renew to continue.", "SUBSCRIPTION_EXPIRED");
 };
 
-// allow('owner','manager') → only these shop roles may continue
-const allow = (...roles) => (req, res, next) => {
-  if (req.isSuperAdmin || roles.includes(req.user.role)) return next();
-  return deny(res, 403, "You don't have permission to do this", "FORBIDDEN");
+const ROLE_PERMISSIONS = Object.freeze({
+  owner: Object.freeze([
+    "settings:read",
+    "settings:pos-read",
+    "settings:write",
+    "staff:manage",
+    "products:read",
+    "products:manage",
+    "products:history",
+    "customers:read",
+    "customers:write",
+    "customers:manage",
+    "purchases:manage",
+    "suppliers:manage",
+    "expenses:manage",
+    "reports:view",
+    "reports:profit",
+    "bills:use",
+  ]),
+  manager: Object.freeze([
+    "settings:pos-read",
+    "products:read",
+    "products:manage",
+    "products:history",
+    "customers:read",
+    "customers:write",
+    "customers:manage",
+    "purchases:manage",
+    "suppliers:manage",
+    "expenses:manage",
+    "reports:view",
+    "bills:use",
+  ]),
+  cashier: Object.freeze([
+    "settings:pos-read",
+    "products:read",
+    "customers:read",
+    "customers:write",
+    "bills:use",
+  ]),
+});
+
+const KNOWN_PERMISSIONS = new Set(Object.values(ROLE_PERMISSIONS).flat());
+
+const authorize = (permission) => {
+  if (!KNOWN_PERMISSIONS.has(permission)) {
+    throw new Error(`Unknown authorization permission: ${permission}`);
+  }
+  return (req, res, next) => {
+    if (req.isSuperAdmin || ROLE_PERMISSIONS[req.user?.role]?.includes(permission)) return next();
+    return deny(res, 403, "You don't have permission to do this", "FORBIDDEN");
+  };
 };
 
 const requireSuperAdmin = (req, res, next) => {
@@ -197,7 +245,8 @@ const requireSuperAdmin = (req, res, next) => {
 module.exports = {
   protect,
   requireActiveSubscription,
-  allow,
+  authorize,
+  ROLE_PERMISSIONS,
   requireSuperAdmin,
   signAccessToken,
   signRefreshToken,

@@ -218,7 +218,7 @@ export default function Billing() {
       setCart((prev) => {
         const existing = prev.find((i) => i.productId === product.id);
         const nextQty = (existing ? existing.quantity : 0) + qty;
-        if (!settings.allowNegativeStock && nextQty > stock) {
+        if (nextQty > stock) {
           toast.error(stock <= 0 ? `"${product.name}" is out of stock` : `Only ${formatQty(stock, product.unit)} in stock`);
           return prev;
         }
@@ -244,7 +244,7 @@ export default function Billing() {
       setSearchResults([]);
       setActiveIdx(0);
     },
-    [settings.allowNegativeStock],
+    [],
   );
 
   const handleScan = useCallback(
@@ -280,7 +280,7 @@ export default function Billing() {
           let q = num(value);
           if (!i.allowDecimal) q = Math.round(q);
           if (q <= 0) return null;
-          if (!settings.allowNegativeStock && q > i.stockQty) {
+          if (q > i.stockQty) {
             toast.error(`Only ${formatQty(i.stockQty, i.unit)} in stock`);
             q = i.stockQty;
           }
@@ -749,7 +749,7 @@ export default function Billing() {
           {searchResults.length > 0 && (
             <div className="card fade-in-fast" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 20, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.15)" }}>
               {searchResults.map((p, i) => {
-                const out = num(p.quantity) <= 0 && !settings.allowNegativeStock;
+                const out = num(p.quantity) <= 0;
                 return (
                   <button
                     key={p.id}

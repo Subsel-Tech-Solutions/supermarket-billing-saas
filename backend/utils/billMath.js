@@ -3,13 +3,13 @@ const { HttpError, num, str, round2 } = require("./helpers");
 
 const PAYMENT_METHODS = ["cash", "upi", "card", "credit", "wallet", "cheque", "other"];
 
-const assertCashRefundWithinCollected = (paidAmount, priorRefunds, refundAmount) => {
+const assertRefundWithinCollected = (paidAmount, priorRefunds, refundAmount) => {
   const available = round2(Math.max(0, num(paidAmount) - num(priorRefunds)));
   if (num(refundAmount) > available + 0.001) {
     throw new HttpError(
       400,
-      `Cash refund exceeds the amount collected. Maximum cash refund available is ${available.toFixed(2)}`,
-      "CASH_REFUND_LIMIT",
+      `Refund exceeds the amount collected. Maximum refund available is ${available.toFixed(2)}`,
+      "REFUND_EXCEEDS_COLLECTED",
     );
   }
 };
@@ -168,4 +168,4 @@ const settlePayments = (total, body, settings) => {
   return { payments, paid, due, change, method };
 };
 
-module.exports = { calculateBill, settlePayments, assertCashRefundWithinCollected, PAYMENT_METHODS };
+module.exports = { calculateBill, settlePayments, assertRefundWithinCollected, PAYMENT_METHODS };

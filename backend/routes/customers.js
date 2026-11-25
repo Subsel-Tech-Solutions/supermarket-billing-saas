@@ -1,16 +1,20 @@
 const router = require("express").Router();
 const c = require("../controllers/customerController");
-const { protect, allow, requireActiveSubscription } = require("../middleware/auth");
+const { protect, authorize, requireActiveSubscription } = require("../middleware/auth");
 
 router.use(protect, requireActiveSubscription);
 
-router.get("/", c.getCustomers);
-router.get("/lookup", c.lookupCustomer);
-router.post("/", c.createCustomer);
-router.get("/:id", c.getCustomer);
-router.put("/:id", c.updateCustomer);
-router.delete("/:id", allow("owner", "manager"), c.deleteCustomer);
-router.post("/:id/payments", c.receivePayment);
-router.post("/:id/points", allow("owner", "manager"), c.adjustPoints);
+const read = authorize("customers:read");
+const write = authorize("customers:write");
+const manage = authorize("customers:manage");
+
+router.get("/", read, c.getCustomers);
+router.get("/lookup", read, c.lookupCustomer);
+router.post("/", write, c.createCustomer);
+router.get("/:id", read, c.getCustomer);
+router.put("/:id", write, c.updateCustomer);
+router.delete("/:id", manage, c.deleteCustomer);
+router.post("/:id/payments", write, c.receivePayment);
+router.post("/:id/points", manage, c.adjustPoints);
 
 module.exports = router;

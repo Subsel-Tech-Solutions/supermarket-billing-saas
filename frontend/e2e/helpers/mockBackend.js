@@ -42,7 +42,6 @@ const defaultSettings = (businessName = "FreshMart Superstore", overrides = {}) 
   roundOff: true,
   invoicePrefix: "INV",
   returnPrefix: "RET",
-  allowNegativeStock: false,
   allowCreditSale: true,
   requireCustomerForCredit: true,
   cashierCanDiscount: true,
@@ -1957,7 +1956,7 @@ async function installMockApi(page, state = createMockState()) {
         const p = db.products.find((x) => x.id === parseInt(it.productId, 10) && x.isActive);
         if (!p) return fail(400, "Product not found");
         const qty = round3(num(it.quantity));
-        if (!db.settings.allowNegativeStock && num(p.quantity) < qty) {
+        if (num(p.quantity) < qty) {
           return fail(400, `Insufficient stock for ${p.name} (Available: ${p.quantity})`);
         }
         lines.push({ product: p, price: p.price, quantity: qty, discount: num(it.discount), taxRate: p.taxRate });

@@ -39,7 +39,7 @@ const extractPdfText = (rawString) => {
   return text;
 };
 
-const createInvoicePdf = async (format, itemNames, name = "SuperMart") => {
+const createInvoicePdf = async (format, itemNames, name = "SuperMart", billOverrides = {}) => {
   businessName = name;
   const response = new PassThrough();
   const chunks = [];
@@ -64,6 +64,7 @@ const createInvoicePdf = async (format, itemNames, name = "SuperMart") => {
     totalAmount: 10,
     taxAmount: 0,
     payments: [],
+    ...billOverrides,
   };
   await generateInvoice(
     {
@@ -109,6 +110,13 @@ const run = async () => {
   assert(a4Text.includes("1006"), "A4 PDF should include HSN code 1006");
   assert(a4Text.includes("Amount Chargeable (in words)"), "A4 PDF should include Amount Chargeable (in words)");
   assert(a4Text.includes("Rupees Ten Only"), "A4 PDF should include amount in words text");
+
+  const returnedInvoice = await createInvoicePdf("a4", ["Rice"], "SuperMart", {
+    returnedAmount: 5,
+    status: "partially_returned",
+  });
+  const returnedInvoiceText = extractPdfText(returnedInvoice);
+  assert(returnedInvoiceText.includes("Returned amount"), "A4 PDF should show refunded value");
 
   for (const format of ["thermal58", "thermal80"]) {
     const receipt = await createInvoicePdf(format, ["\u0ba4\u0bae\u0bbf\u0bb4\u0bcd \u20b9 10"]);

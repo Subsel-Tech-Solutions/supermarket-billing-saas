@@ -8,7 +8,7 @@ const { asyncHandler, HttpError, str, int, num, bool, round2 } = require("../uti
 const { getPlatformSettings, clearPlatformCache } = require("../utils/settings");
 const { mergePlatform, SIGNUP_POLICY_VERSION } = require("../utils/defaults");
 const { createShopWithOwner } = require("../utils/shopService");
-const { setAuthCookies } = require("../middleware/auth");
+const { setAuthCookies, hashToken } = require("../middleware/auth");
 const { shopPayload } = require("../utils/shopPayload");
 
 // Per-shop numbers come from each shop's own database → cache briefly
@@ -380,6 +380,31 @@ const returnToAdmin = asyncHandler(async (req, res) => {
   if (!admin || !admin.isActive || !admin.isSuperAdmin) {
     throw new HttpError(403, "Admin user not found or inactive");
   }
+  if ((admin.tokenVersion || 0) !== (decoded.tokenVersion || 0)) {
+    throw new HttpError(401, "Admin session has been revoked");
+  }
+
+  if (!adminRefreshToken) throw new HttpError(401, "Admin session expired");
+  let refreshDecoded;
+  try {
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || `${process.env.JWT_SECRET}_refresh`;
+    refreshDecoded = jwt.verify(adminRefreshToken, refreshSecret);
+  } catch {
+    throw new HttpError(401, "Admin session expired");
+  }
+  if (refreshDecoded.id !== admin.id || (refreshDecoded.tokenVersion || 0) !== (admin.tokenVersion || 0)) {
+    throw new HttpError(401, "Admin session has been revoked");
+  }
+  const savedRefreshToken = await RefreshToken.findOne({
+    where: {
+      userId: admin.id,
+      tokenHash: hashToken(adminRefreshToken),
+      family: refreshDecoded.family,
+      isRevoked: false,
+      expiresAt: { [Op.gt]: new Date() },
+    },
+  });
+  if (!savedRefreshToken) throw new HttpError(401, "Admin session has been revoked");
 
   const isProd = process.env.NODE_ENV === "production";
   res.cookie("accessToken", adminAccessToken, {
