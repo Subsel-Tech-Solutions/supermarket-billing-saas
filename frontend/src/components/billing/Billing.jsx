@@ -27,7 +27,7 @@ import { productAPI, billAPI, customerAPI, openInvoice, newClientRef } from "../
 import { formatCurrency, formatQty, getErrorMessage, debounce, num, PAYMENT_LABELS, currencySymbol, cleanPhone, isValidPhone, amountToWords } from "../../utils/helpers";
 import { calculateBill } from "../../utils/billMath";
 import { printReceipt } from "../../utils/receipt";
-import { Spinner, Modal, ConfirmDialog } from "../shared/UI";
+import { Spinner, Modal, ConfirmDialog, Breadcrumbs } from "../shared/UI";
 import { useSettings } from "../../context/SettingsContext";
 import { useAuth } from "../../context/AuthContext";
 import usePersistentCart from "../../hooks/usePersistentCart";
@@ -668,6 +668,7 @@ export default function Billing() {
     <div className="billing-layout">
       {/* ── Left panel ── */}
       <div className="billing-main">
+        <Breadcrumbs />
         {!online && (
           <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px", background: "var(--danger-light)", border: "1px solid var(--danger)", borderRadius: 10, marginBottom: 16, color: "var(--danger)", flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

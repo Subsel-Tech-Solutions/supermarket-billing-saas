@@ -19,6 +19,7 @@ import {
   Td,
   Pagination,
   MiniStat,
+  Breadcrumbs,
 } from "../shared/UI";
 import BarcodeScanner from "../shared/BarcodeScanner";
 import toast from "react-hot-toast";
@@ -1095,6 +1096,7 @@ export default function Stock() {
 
   return (
     <div style={{ maxWidth: 1360, margin: "0 auto" }} className="fade-in page-content">
+      <Breadcrumbs />
       <ReportModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}

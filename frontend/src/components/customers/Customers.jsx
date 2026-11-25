@@ -89,7 +89,7 @@ export default function Customers() {
             debounced(v, sort, dueOnly);
           }}
           placeholder="Search name, phone, email…"
-          style={{ width: 300 }}
+          style={{ width: 300, maxWidth: "100%" }}
         />
         <select className="input-field" style={{ width: 170 }} value={sort} onChange={(e) => (setPage(1), setSort(e.target.value))}>
           <option value="recent">Recent purchase</option>

@@ -13,6 +13,7 @@ import {
 import toast from "react-hot-toast";
 import { productAPI } from "../../services/api";
 import { numericOnly, blockNonNumericKeys, escapeHtml, getErrorMessage } from "../../utils/helpers";
+import { Breadcrumbs } from "../shared/UI";
 
 function useJsBarcode() {
   const [ready, setReady] = useState(!!window.JsBarcode);
@@ -332,6 +333,7 @@ export default function BarcodeGenerator() {
       style={{ maxWidth: 1280, margin: "0 auto" }}
       className="fade-in page-content"
     >
+      <Breadcrumbs />
       <style>{`
         @media print {
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }

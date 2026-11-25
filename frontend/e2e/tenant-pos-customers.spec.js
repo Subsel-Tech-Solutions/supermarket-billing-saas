@@ -148,7 +148,7 @@ test.describe("Tenant POS Billing, Sales History, Customers & Day Closing", () =
     await expect(page.getByText(/Bill cancelled/)).toBeVisible();
 
     // 2. Customers list + Create + Detail page (Bills, Payments, Points, Edit, Remove)
-    await page.locator("nav").getByRole("link", { name: "Customers" }).click();
+    await page.locator(".desktop-sidebar nav").getByRole("link", { name: "Customers" }).click();
     await expect(page).toHaveURL(/\/customers$/);
     await expect(page.getByText("Priya Sharma").first()).toBeVisible();
 
@@ -186,7 +186,7 @@ test.describe("Tenant POS Billing, Sales History, Customers & Day Closing", () =
     await expect(page.getByText("Points updated")).toBeVisible();
 
     // Remove zero-balance customer Karthik Raja
-    await page.locator("nav").getByRole("link", { name: "Customers" }).click();
+    await page.locator(".desktop-sidebar nav").getByRole("link", { name: "Customers" }).click();
     await page.locator("tr", { hasText: "Karthik Raja" }).click();
     await page.getByRole("button", { name: "Remove customer" }).click();
     await page.getByRole("dialog", { name: "Remove customer" }).getByRole("button", { name: "Confirm" }).click();

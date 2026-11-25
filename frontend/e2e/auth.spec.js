@@ -56,6 +56,11 @@ async function mockApi(page) {
     const path = url.pathname;
     const method = request.method();
 
+    if (path.endsWith("/auth/csrf")) {
+      await route.fulfill({ json: { success: true, csrfToken: "test-csrf-token" } });
+      return;
+    }
+
     if (path.endsWith("/auth/me") || path.endsWith("/auth/refresh")) {
       await route.fulfill({
         status: 401,
