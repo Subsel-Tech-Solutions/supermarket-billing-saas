@@ -420,6 +420,41 @@
   flex-wrap: wrap;
 }
 
+.breadcrumbs {
+  margin-bottom: 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.breadcrumbs ol,
+.breadcrumbs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.breadcrumbs ol {
+  flex-wrap: wrap;
+}
+.breadcrumbs a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.breadcrumbs a:hover {
+  color: var(--accent-dark);
+  text-decoration: underline;
+}
+.breadcrumbs [aria-current="page"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.breadcrumb-separator {
+  color: var(--text-muted);
+}
+
 .mobile-nav-bar,
 .mobile-nav-layer {
   display: none;
@@ -744,6 +779,43 @@
   }
 }
 
+.checkout-payment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 110px), 1fr));
+  gap: 8px;
+}
+.checkout-payment-choice {
+  min-width: 0;
+  min-height: 40px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.checkout-actions {
+  display: flex;
+  gap: 10px;
+}
+.checkout-back {
+  flex: 1;
+  justify-content: center;
+}
+.checkout-confirm {
+  flex: 2;
+  justify-content: center;
+  padding: 11px;
+}
+@media (max-width: 600px) {
+  .checkout-actions {
+    flex-direction: column;
+  }
+  .checkout-actions > button {
+    flex: none;
+    min-width: 0;
+    width: 100%;
+    white-space: normal;
+  }
+}
+
 #qr-reader {
   width: 100% !important;
   border: none !important;
@@ -772,9 +844,15 @@
   padding: 48px 56px;
 }
 @media (max-width: 720px) {
-  /* On a phone the card is the page: no rounded floating panel, no forced height,
-     and the generous desktop padding becomes a thin gutter. */
+  .auth-page-shell {
+    padding: 0 !important;
+    min-height: 100dvh;
+  }
   .auth-card {
+    min-height: 0;
+    border-radius: 18px;
+  }
+  .auth-card--full {
     min-height: 100dvh;
     border-radius: 0;
     border: none;
@@ -782,6 +860,16 @@
   }
   .auth-form {
     padding: 32px 20px calc(32px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (max-width: 420px) {
+  .signup-invite-controls {
+    flex-direction: column;
+  }
+  .signup-invite-controls button {
+    width: 100%;
+    justify-content: center;
+    white-space: normal;
   }
 }
 

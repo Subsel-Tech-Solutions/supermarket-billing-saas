@@ -2,6 +2,7 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import { Loader2, Search } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 
 export const Spinner = ({ size = 18, color = "var(--accent)", style = {} }) => (
   <Loader2
@@ -396,8 +397,77 @@ export const SectionHeader = ({ title, subtitle, actions }) => (
 );
 
 // ── Additional building blocks ───────────────────────────────────────────────
+const SHOP_BREADCRUMB_LABELS = {
+  dashboard: "Dashboard",
+  billing: "Billing",
+  transactions: "Sales History",
+  customers: "Customers",
+  "day-end": "Day Closing",
+  stock: "Stock",
+  barcode: "Barcodes",
+  purchases: "Purchases",
+  suppliers: "Suppliers",
+  reports: "Reports",
+  expenses: "Expenses",
+  staff: "Staff",
+  settings: "Settings",
+};
+
+const ADMIN_BREADCRUMB_LABELS = {
+  businesses: "Businesses",
+  subscriptions: "Subscriptions",
+  users: "Users",
+  branding: "Themes & Branding",
+  reports: "Reports",
+  settings: "Settings",
+  account: "My Account",
+};
+
+const breadcrumbTitle = (segment) =>
+  segment
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+export const Breadcrumbs = () => {
+  const { pathname } = useLocation();
+  const segments = pathname.split("/").filter(Boolean);
+  if (!segments.length) return null;
+
+  const crumbs = [{ label: "Home", to: "/" }];
+  if (segments[0] === "admin") {
+    crumbs.push({ label: "Platform", to: "/admin" });
+    crumbs.push({
+      label: segments[1] ? ADMIN_BREADCRUMB_LABELS[segments[1]] || breadcrumbTitle(segments[1]) : "Dashboard",
+    });
+  } else {
+    segments.forEach((segment, index) => {
+      const isCustomerDetails = segments[0] === "customers" && index === 1;
+      const label = isCustomerDetails
+        ? "Customer details"
+        : SHOP_BREADCRUMB_LABELS[segment] || breadcrumbTitle(segment);
+      const to = index < segments.length - 1 ? `/${segments.slice(0, index + 1).join("/")}` : undefined;
+      crumbs.push({ label, to });
+    });
+  }
+
+  return (
+    <nav className="breadcrumbs no-print" aria-label="Breadcrumb">
+      <ol>
+        {crumbs.map((crumb, index) => (
+          <li key={`${crumb.label}-${index}`}>
+            {index > 0 && <span className="breadcrumb-separator" aria-hidden="true">/</span>}
+            {crumb.to ? <Link to={crumb.to}>{crumb.label}</Link> : <span aria-current="page">{crumb.label}</span>}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+};
+
 export const Page = ({ children, maxWidth = 1280, className = "" }) => (
   <div style={{ maxWidth, margin: "0 auto" }} className={`fade-in page-content ${className}`.trim()}>
+    <Breadcrumbs />
     {children}
   </div>
 );

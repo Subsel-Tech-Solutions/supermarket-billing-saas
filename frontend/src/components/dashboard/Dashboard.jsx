@@ -5,7 +5,7 @@ import { IndianRupee, ShoppingBag, Package, TrendingUp, AlertTriangle, Clock, Wa
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { reportAPI } from "../../services/api";
 import { formatCurrency, formatDateTime, formatDate, formatQty, getErrorMessage, num, PAYMENT_LABELS, paymentColor, currencySymbol } from "../../utils/helpers";
-import { StatCard, PageLoader, Pill, EmptyState } from "../shared/UI";
+import { StatCard, PageLoader, Pill, EmptyState, Breadcrumbs } from "../shared/UI";
 import { useSettings } from "../../context/SettingsContext";
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -81,6 +81,7 @@ export default function Dashboard() {
   if (!data) {
     return (
       <div className="page-content">
+        <Breadcrumbs />
         <EmptyState
           icon={AlertTriangle}
           title="Dashboard unavailable"
@@ -101,6 +102,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ maxWidth: 1320, margin: "0 auto" }} className="fade-in page-content">
+      <Breadcrumbs />
       <div className="section-head">
         <div style={{ minWidth: 0 }}>
           <h1 style={{ fontFamily: "'Fraunces','Playfair Display',serif", fontSize: "clamp(22px, 5vw, 28px)", fontWeight: 300, color: "var(--text-primary)" }}>

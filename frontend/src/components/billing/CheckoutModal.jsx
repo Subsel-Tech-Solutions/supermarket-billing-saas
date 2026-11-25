@@ -69,12 +69,13 @@ export default function CheckoutModal({
         )}
 
         <FormField label="Payment">
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(4, methods.length + 1)}, 1fr)`, gap: 8 }}>
+          <div className="checkout-payment-grid">
             {methods.map((method) => {
               const active = !checkout.split && checkout.method === method;
               return (
                 <button
                   key={method}
+                  className="checkout-payment-choice"
                   onClick={() => setCheckout({ ...checkout, split: false, method, tendered: "" })}
                   style={{
                     padding: "9px 4px",
@@ -92,6 +93,7 @@ export default function CheckoutModal({
               );
             })}
             <button
+              className="checkout-payment-choice"
               onClick={() => setCheckout({ ...checkout, split: true, payments: {} })}
               style={{
                 padding: "9px 4px",
@@ -203,9 +205,9 @@ export default function CheckoutModal({
           </FormField>
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} className="btn-ghost" style={{ flex: 1, justifyContent: "center" }}>Back</button>
-          <button onClick={submitBill} disabled={submitting || !online} className="btn-primary" style={{ flex: 2, justifyContent: "center", padding: "11px", opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
+        <div className="checkout-actions">
+          <button onClick={onClose} className="btn-ghost checkout-back">Back</button>
+          <button onClick={submitBill} disabled={submitting || !online} className="btn-primary checkout-confirm" style={{ opacity: !online ? 0.6 : 1, cursor: !online ? "not-allowed" : "pointer" }}>
             {submitting ? <Spinner size={14} color="var(--bg)" /> : !online ? <><WifiOff size={15} /> Offline — Selling Paused</> : <><CheckCircle size={15} /> Confirm sale (F9)</>}
           </button>
         </div>

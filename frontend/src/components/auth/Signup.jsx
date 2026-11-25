@@ -101,7 +101,7 @@ export default function Signup() {
               <label htmlFor="signup-invite-code" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
                 Have an invitation code?
               </label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="signup-invite-controls" style={{ display: "flex", gap: 8 }}>
                 <input
                   id="signup-invite-code"
                   type="text"
@@ -143,9 +143,9 @@ export default function Signup() {
   }
 
   return (
-    <div style={{ minHeight: "100dvh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(0px, 3vw, 24px)" }}>
+    <div className="auth-page-shell" style={{ minHeight: "100dvh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(0px, 3vw, 24px)" }}>
       <div
-        className="auth-card"
+        className="auth-card auth-card--full"
         style={{
           width: "100%",
           maxWidth: 1000,

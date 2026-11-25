@@ -813,7 +813,9 @@ async function installMockApi(page, state = createMockState()) {
     }
 
     // ── Auth Routes ──────────────────────────────────────────────────────────
-    if (method === "GET" && path === "/auth/csrf") return ok({ csrfToken: "test-csrf-token" });
+    if (method === "GET" && path === "/auth/csrf") {
+      return route.fulfill({ json: { success: true, csrfToken: "test-csrf-token" } });
+    }
 
     if (method === "GET" && path === "/auth/me") {
       const u = currentUser();
@@ -1898,6 +1900,16 @@ async function installMockApi(page, state = createMockState()) {
     // Bills / POS
     if (path === "/bills/preview" && method === "POST") {
       const items = Array.isArray(body.items) ? body.items : [];
+      const prices = items
+        .map((item) => {
+          const product = db.products.find((candidate) => candidate.id === parseInt(item.productId, 10) && candidate.isActive);
+          return product ? { productId: product.id, price: product.price, taxRate: product.taxRate } : null;
+        })
+        .filter(Boolean);
+      const foundIds = new Set(prices.map((price) => price.productId));
+      const unavailableProductIds = [...new Set(items.map((item) => parseInt(item.productId, 10)))].filter(
+        (id) => !foundIds.has(id),
+      );
       const lines = items
         .map((it) => {
           const p = db.products.find((x) => x.id === parseInt(it.productId, 10) && x.isActive);
@@ -1912,7 +1924,7 @@ async function installMockApi(page, state = createMockState()) {
         roundOff: db.settings.roundOff,
       });
       delete calc.lines;
-      return ok(calc);
+      return ok({ ...calc, prices, unavailableProductIds });
     }
 
     if (path === "/bills/held" && method === "GET") {

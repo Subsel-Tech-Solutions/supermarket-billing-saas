@@ -36,6 +36,7 @@ export default function Login() {
 
   return (
     <div
+      className="auth-page-shell"
       style={{
         minHeight: "100dvh",
         background: "var(--bg)",
@@ -46,7 +47,7 @@ export default function Login() {
       }}
     >
       <div
-        className="auth-card"
+        className="auth-card auth-card--full"
         style={{
           width: "100%",
           maxWidth: 1120,
