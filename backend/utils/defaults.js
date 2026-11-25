@@ -63,7 +63,6 @@ const SHOP_SETTING_DEFAULTS = {
   billPrefix: "INV",
   purchasePrefix: "PUR",
   returnPrefix: "RET",
-  allowNegativeStock: false,
   allowCreditSale: true,
   requireCustomerForCredit: true,
   maxBillDiscountPercent: 100,

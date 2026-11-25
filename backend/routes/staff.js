@@ -1,8 +1,8 @@
 const router = require("express").Router();
 const c = require("../controllers/staffController");
-const { protect, allow, requireActiveSubscription } = require("../middleware/auth");
+const { protect, authorize, requireActiveSubscription } = require("../middleware/auth");
 
-router.use(protect, requireActiveSubscription, allow("owner"));
+router.use(protect, requireActiveSubscription, authorize("staff:manage"));
 
 router.get("/", c.getStaff);
 router.post("/", c.createStaff);

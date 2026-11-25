@@ -170,6 +170,7 @@ export const authAPI = {
 // ── Shop settings ────────────────────────────────────────────────────────────
 export const settingsAPI = {
   get: () => api.get("/settings"),
+  getPos: () => api.get("/settings/pos"),
   update: (data) => api.put("/settings", data),
   resetAppearance: () => api.post("/settings/reset-appearance"),
 };

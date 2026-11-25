@@ -353,6 +353,65 @@ const createMockRes = () => {
     }
   });
 
+  await check("protect selects the tenant from the authenticated user, not request-supplied IDs", async () => {
+    const { User } = require("../models/master");
+    const tenantManager = require("../tenant/tenantManager");
+    const authPath = require.resolve("../middleware/auth");
+    const previousAuthModule = require.cache[authPath];
+    const originalFindByPk = User.findByPk;
+    const originalGetTenant = tenantManager.getTenant;
+    const shopA = { id: 1, isActive: true, subscriptionEnds: null };
+    const tenantA = { models: { business: "A" } };
+    let selectedShop = null;
+
+    User.findByPk = async (id) => ({
+      id,
+      shopId: 1,
+      isActive: true,
+      isSuperAdmin: false,
+      tokenVersion: 0,
+      shop: shopA,
+    });
+    tenantManager.getTenant = async (shop) => {
+      selectedShop = shop;
+      return tenantA;
+    };
+    delete require.cache[authPath];
+
+    try {
+      const { protect: tenantProtect } = require("../middleware/auth");
+      const token = jwt.sign(
+        { id: 99, shopId: 2, tokenVersion: 0 },
+        process.env.JWT_SECRET,
+        { expiresIn: "15m" },
+      );
+      const req = {
+        body: { shopId: 2 },
+        cookies: { accessToken: token },
+        headers: { "x-tenant-id": "2" },
+        params: { shopId: "2" },
+        query: { shopId: "2" },
+      };
+      const res = createMockRes();
+      let calledNext = false;
+
+      await tenantProtect(req, res, () => {
+        calledNext = true;
+      });
+
+      assert.strictEqual(calledNext, true);
+      assert.strictEqual(selectedShop, shopA);
+      assert.strictEqual(req.shopId, 1);
+      assert.strictEqual(req.tenant, tenantA);
+      assert.strictEqual(req.db, tenantA.models);
+    } finally {
+      User.findByPk = originalFindByPk;
+      tenantManager.getTenant = originalGetTenant;
+      delete require.cache[authPath];
+      if (previousAuthModule) require.cache[authPath] = previousAuthModule;
+    }
+  });
+
   // 7. Refresh Token Rotation & Reuse Detection
   await check("Refresh token rotation invalidates old token and issues new in same family", async () => {
     const { RefreshToken, User } = require("../models/master");

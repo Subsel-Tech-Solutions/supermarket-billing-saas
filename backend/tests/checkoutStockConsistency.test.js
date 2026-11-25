@@ -49,6 +49,67 @@ const run = async () => {
   assert.strictEqual(state.bills.length, 1);
   assert.strictEqual(state.movements.length, 1);
   assert.strictEqual(state.transactions[1].finished, "rollback");
+
+  const simultaneous = createHarness({
+    settings: { allowNegativeStock: true },
+    product: {
+      id: 8,
+      name: "Oil",
+      price: 10,
+      costPrice: 6,
+      quantity: 5,
+      taxRate: 0,
+      mrp: 0,
+      isActive: true,
+      allowDecimal: false,
+    },
+  });
+  const submitSale = async (clientRef) => {
+    const response = {
+      body: null,
+      statusCode: 200,
+      json(body) {
+        this.body = body;
+        return this;
+      },
+      status(statusCode) {
+        this.statusCode = statusCode;
+        return this;
+      },
+    };
+    const request = {
+      ...simultaneous.req,
+      body: {
+        clientRef,
+        items: [{ productId: 8, quantity: 4 }],
+        paymentMethod: "cash",
+      },
+    };
+    try {
+      await simultaneous.invoke(simultaneous.controller.createBill, request, response);
+      return { response };
+    } catch (error) {
+      return { error, response };
+    }
+  };
+  const outcomes = await Promise.all([submitSale("stock-race-a"), submitSale("stock-race-b")]);
+  const successful = outcomes.filter(({ response }) => response.statusCode === 201);
+  const failed = outcomes.filter(({ error }) => error?.statusCode === 400);
+
+  assert.strictEqual(successful.length, 1);
+  assert.strictEqual(failed.length, 1);
+  assert.match(failed[0].error.message, /Insufficient stock/);
+  assert.strictEqual(simultaneous.state.product.quantity, 1);
+  assert.strictEqual(simultaneous.state.bills.length, 1);
+  assert.strictEqual(simultaneous.state.bills[0].paidAmount, 40);
+  assert.strictEqual(simultaneous.state.bills[0].payments.length, 1);
+  assert.strictEqual(simultaneous.state.billItems.length, 1);
+  assert.strictEqual(simultaneous.state.movements.length, 1);
+  assert.strictEqual(simultaneous.state.movements[0].balanceAfter, 1);
+  assert.deepStrictEqual(
+    simultaneous.state.transactions.map((transaction) => transaction.finished).sort(),
+    ["commit", "rollback"],
+  );
   console.log("Checkout stock consistency tests passed.");
 };
 

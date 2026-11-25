@@ -15,10 +15,117 @@ const PREFIX = (process.env.TENANT_DB_PREFIX || "sm_shop_").replace(/[^a-zA-Z0-9
 const IDLE_MS = parseInt(process.env.TENANT_IDLE_MINUTES || "10", 10) * 60 * 1000;
 const MAX_CACHED_TENANTS = parseInt(process.env.MAX_CACHED_TENANTS || "20", 10);
 const SYNC_ALTER = process.env.DB_SYNC_ALTER === "true";
+const STOCK_CHECK_CONSTRAINT = "chk_products_quantity_nonnegative";
+const RETURN_CLIENT_REF_INDEX = "uq_returns_bill_client_ref";
 
 const cache = new Map(); // dbName → { sequelize, models, ready: Promise, lastUsed }
 
 const dbNameForShop = (shopId) => `${PREFIX}${shopId}`;
+
+const supportsEnforcedCheckConstraints = (version) => {
+  const isMariaDb = /mariadb/i.test(version);
+  const versions = version.match(/\d+\.\d+\.\d+/g) || [];
+  const parts = (isMariaDb ? versions[versions.length - 1] : versions[0])?.split(".").map(Number);
+  if (!parts) return false;
+  const minimum = isMariaDb ? [10, 2, 1] : [8, 0, 16];
+  for (let i = 0; i < minimum.length; i += 1) {
+    if (parts[i] > minimum[i]) return true;
+    if (parts[i] < minimum[i]) return false;
+  }
+  return true;
+};
+
+const ensureNonnegativeProductStock = async (sequelize) => {
+  const [versionRows] = await sequelize.query("SELECT VERSION() AS version");
+  const version = String(versionRows[0]?.version || "");
+  if (!supportsEnforcedCheckConstraints(version)) {
+    throw new Error(
+      `Tenant database ${sequelize.config.database} requires MySQL 8.0.16+ or MariaDB 10.2.1+ for enforced stock constraints (found ${version || "unknown"}).`,
+    );
+  }
+
+  const findConstraint = () =>
+    sequelize.query(
+      "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND CONSTRAINT_NAME = :name AND CONSTRAINT_TYPE = 'CHECK'",
+      { replacements: { name: STOCK_CHECK_CONSTRAINT } },
+    );
+  const [constraints] = await findConstraint();
+  if (constraints.length) return;
+
+  const [negativeProducts] = await sequelize.query("SELECT id FROM products WHERE quantity < 0 LIMIT 1");
+  if (negativeProducts.length) {
+    throw new Error(
+      `Tenant database ${sequelize.config.database} has negative stock for product #${negativeProducts[0].id}; correct existing inventory before enabling the non-negative stock constraint.`,
+    );
+  }
+
+  try {
+    await sequelize.query(`ALTER TABLE products ADD CONSTRAINT ${STOCK_CHECK_CONSTRAINT} CHECK (quantity >= 0)`);
+  } catch (error) {
+    const [constraintsAfterRace] = await findConstraint();
+    if (!constraintsAfterRace.length) throw error;
+  }
+};
+
+const ensureReturnIdempotency = async (sequelize) => {
+  const [tables] = await sequelize.query(
+    "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sale_returns'",
+  );
+  if (!tables.length) return;
+
+  await sequelize.query(
+    "UPDATE sale_returns SET client_ref = CONCAT('legacy-return-', id) WHERE client_ref IS NULL",
+  );
+
+  const [duplicates] = await sequelize.query(
+    "SELECT bill_id, client_ref FROM sale_returns GROUP BY bill_id, client_ref HAVING COUNT(*) > 1 LIMIT 1",
+  );
+  if (duplicates.length) {
+    throw new Error(
+      `Tenant database ${sequelize.config.database} has duplicate return idempotency keys for bill #${duplicates[0].bill_id}; resolve the duplicate return records before startup.`,
+    );
+  }
+
+  const findIndex = () =>
+    sequelize.query(
+      "SELECT NON_UNIQUE AS nonUnique, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX SEPARATOR ',') AS indexColumns FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sale_returns' AND INDEX_NAME = :name GROUP BY INDEX_NAME, NON_UNIQUE",
+      { replacements: { name: RETURN_CLIENT_REF_INDEX } },
+    );
+  const validIndex = (rows) =>
+    rows.length > 0 && Number(rows[0].nonUnique) === 0 && rows[0].indexColumns === "bill_id,client_ref";
+
+  const [indexes] = await findIndex();
+  if (indexes.length && !validIndex(indexes)) {
+    throw new Error(
+      `Tenant database ${sequelize.config.database} has an incompatible ${RETURN_CLIENT_REF_INDEX} index on sale_returns.`,
+    );
+  }
+  if (!indexes.length) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE sale_returns ADD UNIQUE INDEX ${RETURN_CLIENT_REF_INDEX} (bill_id, client_ref)`,
+      );
+    } catch (error) {
+      const [indexesAfterRace] = await findIndex();
+      if (!validIndex(indexesAfterRace)) throw error;
+    }
+  }
+
+  const findColumn = () =>
+    sequelize.query(
+      "SELECT IS_NULLABLE AS isNullable FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sale_returns' AND COLUMN_NAME = 'client_ref'",
+    );
+  const [columns] = await findColumn();
+  if (!columns.length) throw new Error(`Tenant database ${sequelize.config.database} is missing sale_returns.client_ref.`);
+  if (columns[0].isNullable === "YES") {
+    try {
+      await sequelize.query("ALTER TABLE sale_returns MODIFY client_ref VARCHAR(64) NOT NULL");
+    } catch (error) {
+      const [columnsAfterRace] = await findColumn();
+      if (!columnsAfterRace.length || columnsAfterRace[0].isNullable === "YES") throw error;
+    }
+  }
+};
 
 const buildEntry = (dbName, seed = {}) => {
   const sequelize = createTenantSequelize(dbName);
@@ -28,7 +135,10 @@ const buildEntry = (dbName, seed = {}) => {
   entry.ready = (async () => {
     await createDatabaseIfMissing(dbName);
     await sequelize.authenticate();
+    await ensureReturnIdempotency(sequelize);
     await sequelize.sync(SYNC_ALTER ? { alter: true } : {});
+    await ensureReturnIdempotency(sequelize);
+    await ensureNonnegativeProductStock(sequelize);
     // Make sure the single settings row exists
     const existing = await models.Setting.findByPk(1);
     if (!existing) {

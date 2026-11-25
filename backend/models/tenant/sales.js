@@ -135,7 +135,7 @@ module.exports = (sequelize) => {
     {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
       returnNumber: { type: DataTypes.STRING(40), allowNull: false, field: "return_number" },
-      clientRef: { type: DataTypes.STRING(64), allowNull: true, field: "client_ref" },
+      clientRef: { type: DataTypes.STRING(64), allowNull: false, field: "client_ref" },
       billId: { type: DataTypes.INTEGER, allowNull: false, field: "bill_id" },
       billNumber: { type: DataTypes.STRING(40), allowNull: true, field: "bill_number" },
       customerId: { type: DataTypes.INTEGER, allowNull: true, field: "customer_id" },

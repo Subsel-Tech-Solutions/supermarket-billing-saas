@@ -1,8 +1,8 @@
 const router = require("express").Router();
 const c = require("../controllers/expenseController");
-const { protect, allow, requireActiveSubscription } = require("../middleware/auth");
+const { protect, authorize, requireActiveSubscription } = require("../middleware/auth");
 
-router.use(protect, requireActiveSubscription, allow("owner", "manager"));
+router.use(protect, requireActiveSubscription, authorize("expenses:manage"));
 
 router.get("/", c.getExpenses);
 router.post("/", c.createExpense);

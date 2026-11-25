@@ -1,22 +1,24 @@
 const router = require("express").Router();
 const c = require("../controllers/productController");
-const { protect, allow, requireActiveSubscription } = require("../middleware/auth");
+const { protect, authorize, requireActiveSubscription } = require("../middleware/auth");
 
 router.use(protect, requireActiveSubscription);
-const staff = allow("owner", "manager");
+const read = authorize("products:read");
+const manage = authorize("products:manage");
+const history = authorize("products:history");
 
-router.get("/", c.getProducts);
-router.get("/summary", c.getSummary);
-router.get("/categories", c.getCategories);
-router.get("/barcode/:barcode", c.getProductByBarcode);
-router.post("/scan", staff, c.scanBarcode);
-router.post("/bulk-import", staff, c.bulkImport);
-router.post("/", staff, c.createProduct);
-router.get("/:id", c.getProduct);
-router.put("/:id", staff, c.updateProduct);
-router.delete("/:id", staff, c.deleteProduct);
-router.patch("/:id/restore", staff, c.restoreProduct);
-router.patch("/:id/stock", staff, c.updateStock);
-router.get("/:id/movements", staff, c.getMovements);
+router.get("/", read, c.getProducts);
+router.get("/summary", read, c.getSummary);
+router.get("/categories", read, c.getCategories);
+router.get("/barcode/:barcode", read, c.getProductByBarcode);
+router.post("/scan", manage, c.scanBarcode);
+router.post("/bulk-import", manage, c.bulkImport);
+router.post("/", manage, c.createProduct);
+router.get("/:id", read, c.getProduct);
+router.put("/:id", manage, c.updateProduct);
+router.delete("/:id", manage, c.deleteProduct);
+router.patch("/:id/restore", manage, c.restoreProduct);
+router.patch("/:id/stock", manage, c.updateStock);
+router.get("/:id/movements", history, c.getMovements);
 
 module.exports = router;

@@ -1,7 +1,7 @@
 // controllers/purchaseController.js — stock inward from suppliers (GRN / purchase bills)
 const { Op } = require("sequelize");
 const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, assertPriceWithinMrp } = require("../utils/helpers");
-const { getShopSettings, nextSequence } = require("../utils/settings");
+const { nextSequence } = require("../utils/settings");
 const { moveStock } = require("../utils/stock");
 
 const getPurchases = asyncHandler(async (req, res) => {
@@ -165,7 +165,6 @@ const createPurchase = asyncHandler(async (req, res) => {
 // PATCH /api/purchases/:id/cancel — reverses stock and supplier balance
 const cancelPurchase = asyncHandler(async (req, res) => {
   const db = req.db;
-  const settings = await getShopSettings(db);
   const t = await req.tenant.sequelize.transaction();
   try {
     const purchase = await db.Purchase.findByPk(req.params.id, { include: [{ model: db.PurchaseItem, as: "items" }], transaction: t, lock: t.LOCK.UPDATE });
@@ -175,7 +174,7 @@ const cancelPurchase = asyncHandler(async (req, res) => {
     for (const item of purchase.items) {
       const product = await db.Product.findByPk(item.productId, { transaction: t, lock: t.LOCK.UPDATE });
       if (!product) continue;
-      if (!settings.allowNegativeStock && Number(product.quantity) < Number(item.quantity)) {
+      if (Number(product.quantity) < Number(item.quantity)) {
         throw new HttpError(400, `Cannot cancel — "${product.name}" has only ${Number(product.quantity)} in stock (already sold)`);
       }
       await moveStock(db, product, -Number(item.quantity), { type: "purchase_cancel", reference: purchase.purchaseNumber, userName: req.user.username, transaction: t });

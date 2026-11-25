@@ -1,5 +1,5 @@
 // utils/stock.js — stock movement logging
-const { round3 } = require("./helpers");
+const { HttpError, round3 } = require("./helpers");
 
 /**
  * Change a product's stock and write a movement row.
@@ -9,6 +9,7 @@ const { round3 } = require("./helpers");
  */
 const moveStock = async (db, product, delta, { type, reference, note, userName, transaction } = {}) => {
   const newQty = round3(Number(product.quantity) + Number(delta));
+  if (newQty < 0) throw new HttpError(400, `Insufficient stock for "${product.name}". Available: ${Number(product.quantity)}`);
   product.quantity = newQty;
   await product.save({ transaction, fields: ["quantity"] });
   await db.StockMovement.create(

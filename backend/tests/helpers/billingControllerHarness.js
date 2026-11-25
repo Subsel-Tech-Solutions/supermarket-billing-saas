@@ -4,7 +4,6 @@ const controllerPath = require.resolve("../../controllers/billingController");
 
 const DEFAULT_SETTINGS = {
   allowCreditSale: false,
-  allowNegativeStock: false,
   cashierCanCancel: true,
   cashierCanDiscount: true,
   defaultPaymentMethod: "cash",
@@ -37,6 +36,44 @@ const createHarness = ({ settings = {}, bill: initialBill = null, product: initi
   let billId = state.bills.reduce((max, bill) => Math.max(max, Number(bill.id) || 0), 0);
   let returnId = 0;
   let sequence = 0;
+  const billLockTails = new Map();
+  const productLockTails = new Map();
+
+  const acquireBillLock = async (transaction, billId) => {
+    if (!transaction.lockedBillIds) transaction.lockedBillIds = new Set();
+    if (transaction.lockedBillIds.has(billId)) return;
+
+    const previous = billLockTails.get(billId) || Promise.resolve();
+    let unlock;
+    const held = new Promise((resolve) => {
+      unlock = resolve;
+    });
+    billLockTails.set(billId, held);
+    await previous;
+    transaction.lockedBillIds.add(billId);
+    transaction.lockReleases.push(() => {
+      unlock();
+      if (billLockTails.get(billId) === held) billLockTails.delete(billId);
+    });
+  };
+
+  const acquireProductLock = async (transaction, productId) => {
+    if (!transaction.lockedProductIds) transaction.lockedProductIds = new Set();
+    if (transaction.lockedProductIds.has(productId)) return;
+
+    const previous = productLockTails.get(productId) || Promise.resolve();
+    let unlock;
+    const held = new Promise((resolve) => {
+      unlock = resolve;
+    });
+    productLockTails.set(productId, held);
+    await previous;
+    transaction.lockedProductIds.add(productId);
+    transaction.lockReleases.push(() => {
+      unlock();
+      if (productLockTails.get(productId) === held) productLockTails.delete(productId);
+    });
+  };
 
   require.cache[settingsPath] = {
     id: settingsPath,
@@ -63,7 +100,11 @@ const createHarness = ({ settings = {}, bill: initialBill = null, product: initi
         state.bills.push(bill);
         return bill;
       },
-      findByPk: async (id) => state.bills.find((bill) => Number(bill.id) === Number(id)) || null,
+      findByPk: async (id, options = {}) => {
+        const billId = Number(id);
+        if (options.transaction && options.lock) await acquireBillLock(options.transaction, billId);
+        return state.bills.find((bill) => Number(bill.id) === billId) || null;
+      },
       findOne: async ({ where }) => state.bills.find((bill) => bill.clientRef === where.clientRef) || null,
     },
     BillItem: {
@@ -81,7 +122,12 @@ const createHarness = ({ settings = {}, bill: initialBill = null, product: initi
     },
     HeldBill: { destroy: async () => 1 },
     Product: {
-      findByPk: async (id) => (state.product && Number(state.product.id) === Number(id) ? state.product : null),
+      findByPk: async (id, options = {}) => {
+        if (options.transaction && options.lock) {
+          await acquireProductLock(options.transaction, Number(id));
+        }
+        return state.product && Number(state.product.id) === Number(id) ? state.product : null;
+      },
     },
     SaleReturn: {
       create: async (values) => {
@@ -94,7 +140,7 @@ const createHarness = ({ settings = {}, bill: initialBill = null, product: initi
         null,
       sum: async (_field, { where }) =>
         state.returns
-          .filter((saleReturn) => Number(saleReturn.billId) === Number(where.billId) && ["cash", "upi", "card"].includes(saleReturn.refundMethod))
+          .filter((saleReturn) => Number(saleReturn.billId) === Number(where.billId) && ["cash", "upi", "card", "store_credit"].includes(saleReturn.refundMethod))
           .reduce((sum, saleReturn) => sum + Number(saleReturn.totalAmount), 0),
     },
     SaleReturnItem: {
@@ -122,11 +168,14 @@ const createHarness = ({ settings = {}, bill: initialBill = null, product: initi
           const transaction = {
             LOCK: { UPDATE: "UPDATE" },
             finished: null,
+            lockReleases: [],
             commit: async function commit() {
               this.finished = "commit";
+              this.lockReleases.splice(0).forEach((release) => release());
             },
             rollback: async function rollback() {
               this.finished = "rollback";
+              this.lockReleases.splice(0).forEach((release) => release());
             },
           };
           state.transactions.push(transaction);
@@ -150,11 +199,11 @@ const createHarness = ({ settings = {}, bill: initialBill = null, product: initi
     },
   };
 
-  const invoke = async (handler, request = req) => {
-    await handler(request, response, (error) => {
+  const invoke = async (handler, request = req, targetResponse = response) => {
+    await handler(request, targetResponse, (error) => {
       throw error;
     });
-    return response;
+    return targetResponse;
   };
 
   return { controller, db, invoke, req, response, state };

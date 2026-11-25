@@ -17,6 +17,7 @@ const run = async () => {
     id: 12,
     billNumber: "INV-000012",
     customerId: null,
+    totalAmount: 20,
     paidAmount: 20,
     dueAmount: 0,
     returnedAmount: 0,
@@ -49,7 +50,7 @@ const run = async () => {
   );
   assert.strictEqual(state.transactions[0].finished, "commit");
 
-  req.body = { items: [{ billItemId: item.id, quantity: 2 }] };
+  req.body = { clientRef: "return-test-too-many", items: [{ billItemId: item.id, quantity: 2 }] };
   await assert.rejects(() => invoke(controller.returnBill), (error) => error.statusCode === 400);
   assert.strictEqual(item.returnedQty, 1);
   assert.strictEqual(bill.returnedAmount, 10);

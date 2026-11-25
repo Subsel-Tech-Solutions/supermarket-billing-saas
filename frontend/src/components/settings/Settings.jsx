@@ -482,7 +482,6 @@ export default function Settings() {
           <Section title="Rules">
             {toggle("Allow credit (due / udhaar) sales", "allowCreditSale")}
             {toggle("Require customer phone for credit sales", "requireCustomerForCredit")}
-            {toggle("Allow selling when stock is zero", "allowNegativeStock", "Stock can go negative (fix it later with a purchase)")}
             {toggle("Cashiers can give discounts", "cashierCanDiscount")}
             {toggle("Cashiers can cancel bills", "cashierCanCancel")}
             {toggle("Print receipt automatically after each sale", "autoPrintAfterSale")}

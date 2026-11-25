@@ -345,8 +345,11 @@ const a4Invoice = (doc, bill, s) => {
   if (Number(bill.roundOff) !== 0) tRow("Round off", money(bill.roundOff, sym));
   tRow("GRAND TOTAL", money(bill.totalAmount, sym), true);
   (bill.payments || []).forEach((p) => tRow(`Paid (${String(p.method).toUpperCase()})`, money(p.amount, sym)));
+  if (Number(bill.returnedAmount) > 0) tRow("Returned amount", `-${money(bill.returnedAmount, sym)}`);
   if (Number(bill.dueAmount) > 0) tRow("Balance due", money(bill.dueAmount, sym), true);
   if (bill.status === "cancelled") tRow("STATUS", "CANCELLED", true);
+  else if (bill.status === "partially_returned") tRow("STATUS", "PARTIALLY RETURNED", true);
+  else if (bill.status === "returned") tRow("STATUS", "RETURNED", true);
 
   y = Math.max(y + 12, 675);
   const words = amountToWords(bill.totalAmount, s.currencyName || "Rupees", s.currencySubunit || "Paise");

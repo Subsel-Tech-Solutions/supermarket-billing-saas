@@ -1,7 +1,7 @@
 // controllers/billingController.js — POS sales, returns, cancellations, held bills
 const { Op } = require("sequelize");
 const { asyncHandler, HttpError, num, str, round2, round3, pad, paging, normalizePhone, isValidPhone, assertPriceWithinMrp, assertExpectedProductPrice } = require("../utils/helpers");
-const { calculateBill, settlePayments, assertCashRefundWithinCollected } = require("../utils/billMath");
+const { calculateBill, settlePayments, assertRefundWithinCollected } = require("../utils/billMath");
 const { getShopSettings, nextSequence } = require("../utils/settings");
 const { rangeFromStrings } = require("../utils/dates");
 const { moveStock } = require("../utils/stock");
@@ -28,12 +28,11 @@ const createBill = asyncHandler(async (req, res) => {
   // double click, lost response, offline retry — return the bill that already exists
   // rather than selling the stock twice.
   const clientRef = str(body.clientRef, 64);
-  if (clientRef) {
-    const existing = await db.Bill.findOne({ where: { clientRef } });
-    if (existing) {
-      const full = await db.Bill.findByPk(existing.id, { include: fullBillInclude(db) });
-      return res.status(200).json({ success: true, message: "Bill already saved", data: { bill: full }, duplicate: true });
-    }
+  if (!clientRef) throw new HttpError(400, "Checkout request is missing its idempotency key", "IDEMPOTENCY_KEY_REQUIRED");
+  const existing = await db.Bill.findOne({ where: { clientRef } });
+  if (existing) {
+    const full = await db.Bill.findByPk(existing.id, { include: fullBillInclude(db) });
+    return res.status(200).json({ success: true, message: "Bill already saved", data: { bill: full }, duplicate: true });
   }
 
   // merge duplicate product lines
@@ -80,7 +79,7 @@ const createBill = asyncHandler(async (req, res) => {
       if (!product.allowDecimal && !Number.isInteger(item.quantity)) {
         throw new HttpError(400, `"${product.name}" is sold in whole ${product.unit || "units"} only`);
       }
-      if (!settings.allowNegativeStock && Number(product.quantity) < item.quantity) {
+      if (Number(product.quantity) < item.quantity) {
         throw new HttpError(400, `Insufficient stock for "${product.name}". Available: ${Number(product.quantity)}`);
       }
       assertExpectedProductPrice(item.expectedPrice, product.price, product.name);
@@ -329,7 +328,7 @@ const createBill = asyncHandler(async (req, res) => {
     if (!t.finished) await t.rollback();
     // Two identical submits can both get past the pre-check above and race to insert.
     // The unique index on client_ref stops the second one; hand back the winner's bill.
-    if (clientRef && err?.name === "SequelizeUniqueConstraintError") {
+    if (err?.name === "SequelizeUniqueConstraintError") {
       const existing = await db.Bill.findOne({ where: { clientRef } });
       if (existing) {
         const full = await db.Bill.findByPk(existing.id, { include: fullBillInclude(db) });
@@ -497,32 +496,51 @@ const returnBill = asyncHandler(async (req, res) => {
   const db = req.db;
   const settings = await getShopSettings(db);
   const body = req.body || {};
-  const requested = (Array.isArray(body.items) ? body.items : []).filter((i) => num(i.quantity) > 0);
-  if (!requested.length) throw new HttpError(400, "Select at least one item to return");
+  const clientRef = str(body.clientRef, 64);
+  if (!clientRef) throw new HttpError(400, "Return request is missing its idempotency key", "IDEMPOTENCY_KEY_REQUIRED");
+
+  const refundMethods = ["cash", "upi", "card", "adjust_due", "store_credit"];
+  const requestedRefundMethod = String(body.refundMethod || "cash").trim().toLowerCase();
+  if (!refundMethods.includes(requestedRefundMethod)) throw new HttpError(400, "Invalid refund method");
+  const refundMethod = requestedRefundMethod;
+
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  if (!rawItems.length) throw new HttpError(400, "Select at least one item to return");
+  const requested = [];
+  const seenItems = new Set();
+  for (const item of rawItems) {
+    const billItemId = Number(item?.billItemId);
+    const quantity = round3(num(item?.quantity));
+    if (!Number.isInteger(billItemId) || billItemId <= 0 || quantity <= 0) {
+      throw new HttpError(400, "Each return item needs a valid invoice item and quantity above zero");
+    }
+    if (seenItems.has(billItemId)) throw new HttpError(400, "An invoice item can only appear once per return");
+    seenItems.add(billItemId);
+    requested.push({ ...item, billItemId, quantity });
+  }
+
   if (req.user.role === "cashier" && !req.isSuperAdmin && !settings.cashierCanCancel) {
     throw new HttpError(403, "Cashiers are not allowed to process returns");
   }
-  const clientRef = str(body.clientRef, 64);
-  const refundMethod = ["cash", "upi", "card", "adjust_due", "store_credit"].includes(body.refundMethod) ? body.refundMethod : "cash";
 
   const t = await req.tenant.sequelize.transaction();
   try {
     const bill = await db.Bill.findByPk(req.params.id, { include: [{ model: db.BillItem, as: "items" }], transaction: t, lock: t.LOCK.UPDATE });
     if (!bill) throw new HttpError(404, "Bill not found");
-    if (clientRef) {
-      const existing = await db.SaleReturn.findOne({ where: { billId: bill.id, clientRef }, transaction: t });
-      if (existing) {
-        await t.commit();
-        const fullBill = await db.Bill.findByPk(bill.id, { include: fullBillInclude(db) });
-        return res.status(200).json({
-          success: true,
-          message: "Return already saved",
-          data: { bill: fullBill, returnNumber: existing.returnNumber, amount: Number(existing.totalAmount) },
-          duplicate: true,
-        });
-      }
+    const existing = await db.SaleReturn.findOne({ where: { billId: bill.id, clientRef }, transaction: t });
+    if (existing) {
+      await t.commit();
+      const fullBill = await db.Bill.findByPk(bill.id, { include: fullBillInclude(db) });
+      return res.status(200).json({
+        success: true,
+        message: "Return already saved",
+        data: { bill: fullBill, returnNumber: existing.returnNumber, amount: Number(existing.totalAmount) },
+        duplicate: true,
+      });
     }
     if (!["completed", "partially_returned"].includes(bill.status)) throw new HttpError(400, "This bill cannot be returned");
+    const priorReturnedAmount = round2(num(bill.returnedAmount));
+    const priorStatus = bill.status;
 
     // Checked up front: "adjust against dues" and "store credit" both need an account to
     // post to. Finding this out after restocking and writing the return rows only worked
@@ -531,35 +549,55 @@ const returnBill = asyncHandler(async (req, res) => {
       throw new HttpError(400, "This bill has no customer — refund in cash / UPI / card instead");
     }
 
-    const { next } = await nextSequence(db, "returnSeq", t);
-    const returnNumber = `${settings.returnPrefix || "RET"}-${pad(next, 6)}`;
     let total = 0;
     const rows = [];
 
     for (const r of requested) {
-      const item = bill.items.find((i) => i.id === parseInt(r.billItemId, 10));
+      const item = bill.items.find((i) => Number(i.id) === r.billItemId);
       if (!item) throw new HttpError(400, "Invalid bill item");
-      const q = round3(num(r.quantity));
+      const q = r.quantity;
       const available = round3(Number(item.quantity) - Number(item.returnedQty));
       if (q > available + 0.0001) throw new HttpError(400, `Only ${available} of "${item.productName}" can be returned`);
-      const amount = round2((Number(item.totalPrice) / Number(item.quantity)) * q);
+      const previousItemAmount = round2((Number(item.totalPrice) * Number(item.returnedQty)) / Number(item.quantity));
+      const nextItemAmount = round2((Number(item.totalPrice) * (Number(item.returnedQty) + q)) / Number(item.quantity));
+      const amount = round2(nextItemAmount - previousItemAmount);
       total = round2(total + amount);
-      item.returnedQty = round3(Number(item.returnedQty) + q);
-      await item.save({ transaction: t, fields: ["returnedQty"] });
       const restock = r.restock !== false;
-      if (restock) {
-        const product = await db.Product.findByPk(item.productId, { transaction: t, lock: t.LOCK.UPDATE });
-        if (product) await moveStock(db, product, q, { type: "return", reference: returnNumber, userName: req.user.username, transaction: t });
-      }
       rows.push({ billItemId: item.id, productId: item.productId, productName: item.productName, quantity: q, amount, restock });
     }
 
-    if (refundMethod === "cash") {
-      const priorMoneyRefunds = await db.SaleReturn.sum("totalAmount", {
-        where: { billId: bill.id, refundMethod: { [Op.in]: ["cash", "upi", "card"] } },
+    const remainingRefundable = round2(Math.max(0, num(bill.totalAmount) - priorReturnedAmount));
+    if (total > remainingRefundable + 0.001) {
+      throw new HttpError(400, `Refund exceeds the remaining refundable amount of ${remainingRefundable.toFixed(2)}`, "REFUND_LIMIT");
+    }
+    if (refundMethod === "adjust_due" && total > num(bill.dueAmount) + 0.001) {
+      throw new HttpError(400, "Refund exceeds the outstanding customer balance; choose another refund method", "REFUND_DUE_LIMIT");
+    }
+    if (["cash", "upi", "card", "store_credit"].includes(refundMethod)) {
+      const priorPayouts = await db.SaleReturn.sum("totalAmount", {
+        where: { billId: bill.id, refundMethod: { [Op.in]: ["cash", "upi", "card", "store_credit"] } },
         transaction: t,
       });
-      assertCashRefundWithinCollected(bill.paidAmount, priorMoneyRefunds, total);
+      assertRefundWithinCollected(bill.paidAmount, priorPayouts, total);
+    }
+
+    const { next } = await nextSequence(db, "returnSeq", t);
+    const returnNumber = `${settings.returnPrefix || "RET"}-${pad(next, 6)}`;
+    for (const row of rows) {
+      const item = bill.items.find((billItem) => Number(billItem.id) === row.billItemId);
+      item.returnedQty = round3(Number(item.returnedQty) + Number(row.quantity));
+      await item.save({ transaction: t, fields: ["returnedQty"] });
+      if (row.restock) {
+        const product = await db.Product.findByPk(row.productId, { transaction: t, lock: t.LOCK.UPDATE });
+        if (product) {
+          await moveStock(db, product, row.quantity, {
+            type: "return",
+            reference: returnNumber,
+            userName: req.user.username,
+            transaction: t,
+          });
+        }
+      }
     }
 
     const saleReturn = await db.SaleReturn.create(
@@ -579,7 +617,7 @@ const returnBill = asyncHandler(async (req, res) => {
     await db.SaleReturnItem.bulkCreate(rows.map((r) => ({ ...r, returnId: saleReturn.id })), { transaction: t });
 
     const fullyReturned = bill.items.every((i) => Number(i.returnedQty) >= Number(i.quantity) - 0.0001);
-    bill.returnedAmount = round2(Number(bill.returnedAmount) + total);
+    bill.returnedAmount = round2(priorReturnedAmount + total);
     bill.status = fullyReturned ? "returned" : "partially_returned";
     // Returning against an unpaid bill reduces what the customer owes on it
     if (refundMethod === "adjust_due") bill.dueAmount = round2(Math.max(0, Number(bill.dueAmount) - total));
@@ -596,11 +634,12 @@ const returnBill = asyncHandler(async (req, res) => {
       }
     }
 
-    await t.commit();
     await logAudit(req, {
       action: "BILL_RETURN",
       entityType: "bill",
       entityId: bill.billNumber,
+      transaction: t,
+      required: true,
       details: {
         billId: bill.id,
         billNumber: bill.billNumber,
@@ -608,18 +647,20 @@ const returnBill = asyncHandler(async (req, res) => {
         refundAmount: total,
         refundMethod,
         reason: str(body.reason, 255) || "No reason specified",
+        items: rows,
       },
       diff: {
-        status: { to: fullyReturned ? "returned" : "partially_returned" },
-        returnedAmount: { to: Number(bill.returnedAmount) },
+        status: { from: priorStatus, to: fullyReturned ? "returned" : "partially_returned" },
+        returnedAmount: { from: priorReturnedAmount, to: Number(bill.returnedAmount) },
       },
     });
+    await t.commit();
 
     const updated = await db.Bill.findByPk(bill.id, { include: fullBillInclude(db) });
     res.status(201).json({ success: true, message: `Return ${returnNumber} saved — refund ${total.toFixed(2)}`, data: { bill: updated, returnNumber, amount: total } });
   } catch (err) {
     if (!t.finished) await t.rollback();
-    if (clientRef && err?.name === "SequelizeUniqueConstraintError") {
+    if (err?.name === "SequelizeUniqueConstraintError") {
       const existing = await db.SaleReturn.findOne({ where: { billId: req.params.id, clientRef } });
       if (existing) {
         const fullBill = await db.Bill.findByPk(existing.billId, { include: fullBillInclude(db) });
