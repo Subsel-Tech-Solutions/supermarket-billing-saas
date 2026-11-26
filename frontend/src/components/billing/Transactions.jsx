@@ -120,10 +120,10 @@ export default function Transactions() {
       />
 
       <div className="card" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-        <SearchInput value={filters.search} onChange={(v) => setFilter("search", v)} placeholder="Bill no, customer, phone…" style={{ width: 240 }} />
-        <input type="date" value={filters.startDate} onChange={(e) => setFilter("startDate", e.target.value)} className="input-field" style={{ width: 150 }} />
-        <input type="date" value={filters.endDate} onChange={(e) => setFilter("endDate", e.target.value)} className="input-field" style={{ width: 150 }} />
-        <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)} className="input-field" style={{ width: 150 }}>
+        <SearchInput value={filters.search} onChange={(v) => setFilter("search", v)} placeholder="Bill no, customer, phone…" className="filter-control" />
+        <input type="date" value={filters.startDate} onChange={(e) => setFilter("startDate", e.target.value)} className="input-field filter-control" />
+        <input type="date" value={filters.endDate} onChange={(e) => setFilter("endDate", e.target.value)} className="input-field filter-control" />
+        <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)} className="input-field filter-control">
           <option value="">All status</option>
           {Object.entries(STATUS).map(([k, [, l]]) => (
             <option key={k} value={k}>
@@ -131,7 +131,7 @@ export default function Transactions() {
             </option>
           ))}
         </select>
-        <select value={filters.paymentMethod} onChange={(e) => setFilter("paymentMethod", e.target.value)} className="input-field" style={{ width: 140 }}>
+        <select value={filters.paymentMethod} onChange={(e) => setFilter("paymentMethod", e.target.value)} className="input-field filter-control">
           <option value="">All payments</option>
           {["cash", "upi", "card", "credit", "split", "wallet", "cheque", "other"].map((m) => (
             <option key={m} value={m}>

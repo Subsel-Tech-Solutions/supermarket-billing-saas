@@ -164,9 +164,11 @@ export default function Reports() {
               {label}
             </button>
           ))}
-          <input type="date" className="input-field" style={{ width: 150 }} value={range.startDate} onChange={(e) => (setPreset(""), setRange({ ...range, startDate: e.target.value }))} />
-          <span style={{ color: "var(--text-muted)" }}>to</span>
-          <input type="date" className="input-field" style={{ width: 150 }} value={range.endDate} onChange={(e) => (setPreset(""), setRange({ ...range, endDate: e.target.value }))} />
+          <div className="filter-date-range">
+            <input type="date" className="input-field filter-control" value={range.startDate} onChange={(e) => (setPreset(""), setRange({ ...range, startDate: e.target.value }))} />
+            <span style={{ color: "var(--text-muted)" }}>to</span>
+            <input type="date" className="input-field filter-control" value={range.endDate} onChange={(e) => (setPreset(""), setRange({ ...range, endDate: e.target.value }))} />
+          </div>
         </div>
       ) : (
         <div className="card" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

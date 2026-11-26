@@ -206,7 +206,7 @@ function SidebarBody({ collapsed, onClose }) {
         )}
       </div>
 
-      <nav style={{ flex: 1, padding: "10px 8px", display: "flex", flexDirection: "column", gap: 1, overflowY: "auto" }}>
+      <nav style={{ flex: 1, minHeight: 0, padding: "10px 8px", display: "flex", flexDirection: "column", gap: 1, overflowY: "auto" }}>
         {sections.map((section) => {
           const items = section.items.filter((i) => !i.roles || can(...i.roles));
           if (!items.length) return null;
@@ -292,6 +292,16 @@ export default function Sidebar() {
     localStorage.setItem("sidebarCollapsed", collapsed ? "0" : "1");
     setCollapsed(!collapsed);
   };
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const previousWidth = root.style.getPropertyValue("--desktop-sidebar-width");
+    root.style.setProperty("--desktop-sidebar-width", collapsed ? "58px" : "212px");
+    return () => {
+      if (previousWidth) root.style.setProperty("--desktop-sidebar-width", previousWidth);
+      else root.style.removeProperty("--desktop-sidebar-width");
+    };
+  }, [collapsed]);
 
   // Close on navigation (a tap on a link) and on Escape, and stop the page behind the
   // drawer from scrolling under it.

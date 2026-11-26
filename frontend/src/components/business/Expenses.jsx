@@ -87,10 +87,12 @@ export default function Expenses() {
         }
       />
       <div className="card" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <input type="date" className="input-field" style={{ width: 150 }} value={range.startDate} onChange={(e) => (setPage(1), setRange({ ...range, startDate: e.target.value }))} />
-        <span style={{ color: "var(--text-muted)" }}>to</span>
-        <input type="date" className="input-field" style={{ width: 150 }} value={range.endDate} onChange={(e) => (setPage(1), setRange({ ...range, endDate: e.target.value }))} />
-        <select className="input-field" style={{ width: 180 }} value={range.category} onChange={(e) => (setPage(1), setRange({ ...range, category: e.target.value }))}>
+        <div className="filter-date-range">
+          <input type="date" className="input-field filter-control" value={range.startDate} onChange={(e) => (setPage(1), setRange({ ...range, startDate: e.target.value }))} />
+          <span style={{ color: "var(--text-muted)" }}>to</span>
+          <input type="date" className="input-field filter-control" value={range.endDate} onChange={(e) => (setPage(1), setRange({ ...range, endDate: e.target.value }))} />
+        </div>
+        <select className="input-field filter-control" value={range.category} onChange={(e) => (setPage(1), setRange({ ...range, category: e.target.value }))}>
           <option value="">All categories</option>
           {allCats.map((c) => (
             <option key={c} value={c}>

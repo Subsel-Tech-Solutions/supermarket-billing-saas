@@ -72,9 +72,9 @@ export default function Purchases() {
         </div>
       )}
       <div className="card" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <input type="date" className="input-field" style={{ width: 150 }} value={filters.startDate} onChange={(e) => setFilter("startDate", e.target.value)} />
-        <input type="date" className="input-field" style={{ width: 150 }} value={filters.endDate} onChange={(e) => setFilter("endDate", e.target.value)} />
-        <select className="input-field" style={{ width: 200 }} value={filters.supplierId} onChange={(e) => setFilter("supplierId", e.target.value)}>
+        <input type="date" className="input-field filter-control" value={filters.startDate} onChange={(e) => setFilter("startDate", e.target.value)} />
+        <input type="date" className="input-field filter-control" value={filters.endDate} onChange={(e) => setFilter("endDate", e.target.value)} />
+        <select className="input-field filter-control" value={filters.supplierId} onChange={(e) => setFilter("supplierId", e.target.value)}>
           <option value="">All suppliers</option>
           {suppliers.map((s) => (
             <option key={s.id} value={s.id}>
@@ -370,7 +370,7 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
       </div>
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>New item? Create it first in Stock → Add product, then add it here.</p>
 
-      <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+      <div className="table-scroll-wrapper table-stack" style={{ border: "1px solid var(--border)", borderRadius: 10 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
           <thead>
             <tr style={{ background: "var(--bg-sunken)", fontSize: 11.5, color: "var(--text-muted)", textAlign: "left" }}>
@@ -383,7 +383,7 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
           </thead>
           <tbody>
             {items.length === 0 && (
-              <tr>
+              <tr className="purchase-item-empty">
                 <td colSpan={10} style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
                   No products added
                 </td>
@@ -409,10 +409,10 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
                 );
               return (
                 <tr key={it.productId} style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={{ ...cell, fontWeight: 500, maxWidth: 180 }}>{it.name}</td>
-                  <td style={cell}>{inp("quantity", 70)}</td>
-                  <td style={cell}>{inp("costPrice", 90)}</td>
-                  <td style={cell}>
+                  <td data-primary style={{ ...cell, fontWeight: 500, maxWidth: 180 }}>{it.name}</td>
+                  <td data-label="Qty" style={cell}>{inp("quantity", 70)}</td>
+                  <td data-label="Cost (excl. GST)" style={cell}>{inp("costPrice", 90)}</td>
+                  <td data-label="GST %" style={cell}>
                     <select className="input-field" value={it.taxRate} onChange={(e) => setItem(i, "taxRate", e.target.value)} style={{ width: 70, padding: "5px 4px", fontSize: 12.5 }}>
                       {[0, 5, 12, 18, 28].map((r) => (
                         <option key={r} value={r}>
@@ -421,12 +421,12 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
                       ))}
                     </select>
                   </td>
-                  <td style={cell}>{inp("mrp", 80)}</td>
-                  <td style={cell}>{inp("sellingPrice", 80)}</td>
-                  <td style={cell}>{inp("expiryDate", 135, "date")}</td>
-                  <td style={cell}>{inp("batchNo", 80, "text")}</td>
-                  <td style={{ ...cell, textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{formatCurrency(amount)}</td>
-                  <td style={cell}>
+                  <td data-label="MRP" style={cell}>{inp("mrp", 80)}</td>
+                  <td data-label="Selling price" style={cell}>{inp("sellingPrice", 80)}</td>
+                  <td data-label="Expiry" style={cell}>{inp("expiryDate", 135, "date")}</td>
+                  <td data-label="Batch" style={cell}>{inp("batchNo", 80, "text")}</td>
+                  <td data-label="Amount" style={{ ...cell, textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{formatCurrency(amount)}</td>
+                  <td data-actions style={cell}>
                     <button className="btn-ghost" style={{ padding: "4px 7px" }} onClick={() => setItems(items.filter((_, x) => x !== i))} aria-label="Remove">
                       <Trash2 size={12} />
                     </button>
