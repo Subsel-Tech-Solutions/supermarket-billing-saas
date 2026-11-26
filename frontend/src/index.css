@@ -45,6 +45,7 @@
   --page-pad-y: 28px;
   /* Room the fixed mobile menu button needs above page content */
   --mobile-bar: 0px;
+  --desktop-sidebar-width: 212px;
   /* Height of the billing screen's mobile cart bar */
   --cart-bar: 72px;
 
@@ -95,8 +96,6 @@
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     line-height: 1.6;
-    /* Never let a wide table drag the whole page sideways */
-    overflow-x: hidden;
   }
   h1,
   h2,
@@ -328,7 +327,7 @@
 }
 .grid-panels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 16px;
 }
 
@@ -384,6 +383,25 @@
 .row-wrap > .grow {
   flex: 1 1 260px;
   min-width: 0;
+}
+
+.filter-control {
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: 220px;
+  width: auto !important;
+}
+.filter-date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 320px;
+  max-width: 440px;
+  min-width: 0;
+}
+.filter-date-range .filter-control {
+  flex: 1 1 140px;
+  max-width: 220px;
 }
 
 /* Filter chips that scroll horizontally instead of stacking into a tall block */
@@ -536,6 +554,23 @@
     flex: 1 1 auto;
     justify-content: center;
   }
+  .filter-control {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .filter-date-range {
+    flex-basis: 100%;
+    max-width: none;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filter-date-range .filter-control {
+    flex-basis: auto;
+    max-width: none;
+  }
+  .filter-date-range > span {
+    text-align: center;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -577,6 +612,10 @@
   }
   .table-stack tbody tr:last-child {
     margin-bottom: 0;
+  }
+  .table-stack .purchase-item-empty td {
+    display: block !important;
+    text-align: center !important;
   }
   .table-stack td {
     display: flex !important;
@@ -638,11 +677,26 @@
 /* ══════════════════════════════════════════════════════════════════════════════
    BILLING (POS) SCREEN
 
-   Desktop: product panel on the left, cart docked right.
-   Mobile:  product panel full width with a summary bar pinned to the bottom; the
-            cart opens as a sheet over it. The old rule gave the cart a permanent
-            50vh even when empty, so half the phone was a blank panel.
+   Wide screens: product panel on the left, cart docked right.
+   Narrow screens: product panel full width with a summary bar pinned to the bottom;
+                   the cart opens as a sheet over it.
    ══════════════════════════════════════════════════════════════════════════════ */
+.billing-cart-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.billing-cart-item-name {
+  flex: 1;
+  min-width: 0;
+}
+.billing-cart-item-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 !important;
+  align-items: center;
+  justify-content: center;
+}
 .billing-layout {
   display: flex;
   /* dvh tracks the visible viewport, so the mobile address bar cannot clip the
@@ -675,12 +729,6 @@
 }
 
 @media (max-width: 1024px) {
-  .billing-cart {
-    width: 350px;
-  }
-}
-
-@media (max-width: 900px) {
   .billing-layout {
     display: block;
     height: auto;
@@ -742,7 +790,34 @@
   }
 }
 
-@media (min-width: 901px) {
+@media (min-width: 861px) and (max-width: 1024px) {
+  .billing-cart {
+    left: var(--desktop-sidebar-width);
+    width: calc(100% - var(--desktop-sidebar-width));
+  }
+  .billing-cart-backdrop,
+  .billing-bar {
+    left: var(--desktop-sidebar-width);
+  }
+}
+
+@media (max-width: 560px) {
+  .billing-cart-item-row {
+    flex-wrap: wrap;
+    gap: 8px 6px;
+  }
+  .billing-cart-item-name {
+    flex: 1 0 100%;
+  }
+  .billing-cart-item-qty {
+    gap: 1px !important;
+  }
+  .billing-cart-item-total {
+    margin-left: auto;
+  }
+}
+
+@media (min-width: 1025px) {
   /* The sheet classes must never leak into the docked desktop cart */
   .billing-cart {
     transform: none !important;

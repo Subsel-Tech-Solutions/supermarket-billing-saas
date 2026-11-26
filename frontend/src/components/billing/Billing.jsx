@@ -36,9 +36,9 @@ import CheckoutModal from "./CheckoutModal";
 
 const mono = { fontFamily: "JetBrains Mono, monospace" };
 const qtyBtn = {
-  width: 26,
-  height: 26,
-  borderRadius: 7,
+  width: 44,
+  height: 44,
+  borderRadius: 10,
   background: "var(--bg-sunken)",
   border: "1px solid var(--border)",
   display: "flex",
@@ -54,8 +54,8 @@ function CartItem({ item, line, onQty, onDiscount, onRemove, canDiscount }) {
   const step = item.allowDecimal ? 0.25 : 1;
   return (
     <div className="fade-in" style={{ padding: "11px 0", borderBottom: "1px solid var(--border)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="billing-cart-item-row">
+        <div className="billing-cart-item-name">
           <p style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</p>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 1, fontSize: 11.5, color: "var(--text-muted)", flexWrap: "wrap" }}>
             {item.mrp > item.price && <span style={{ textDecoration: "line-through", ...mono }}>{formatCurrency(item.mrp)}</span>}
@@ -68,7 +68,7 @@ function CartItem({ item, line, onQty, onDiscount, onRemove, canDiscount }) {
             {num(item.discount) > 0 && <span style={{ color: "var(--success)" }}>· −{formatCurrency(item.discount)}</span>}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <div className="billing-cart-item-qty" style={{ display: "flex", alignItems: "center", gap: 5 }}>
           <button onClick={() => onQty(item.productId, Math.round((item.quantity - step) * 1000) / 1000)} style={qtyBtn} aria-label="Decrease">
             <Minus size={11} />
           </button>
@@ -79,7 +79,8 @@ function CartItem({ item, line, onQty, onDiscount, onRemove, canDiscount }) {
             inputMode="decimal"
             aria-label="Quantity"
             style={{
-              width: item.allowDecimal ? 56 : 40,
+              width: item.allowDecimal ? 56 : 44,
+              minHeight: 44,
               textAlign: "center",
               fontSize: 13,
               fontWeight: 600,
@@ -95,12 +96,13 @@ function CartItem({ item, line, onQty, onDiscount, onRemove, canDiscount }) {
             <Plus size={11} />
           </button>
         </div>
-        <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", minWidth: 72, textAlign: "right", ...mono }}>{formatCurrency(line?.total ?? 0)}</p>
+        <p className="billing-cart-item-total" style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", minWidth: 72, textAlign: "right", ...mono }}>{formatCurrency(line?.total ?? 0)}</p>
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <button
             onClick={() => onRemove(item.productId)}
             aria-label="Remove"
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2, display: "flex" }}
+            className="billing-cart-item-button"
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
           >
@@ -111,7 +113,8 @@ function CartItem({ item, line, onQty, onDiscount, onRemove, canDiscount }) {
               onClick={() => setEditDisc(!editDisc)}
               aria-label="Item discount"
               title="Item discount"
-              style={{ background: "none", border: "none", cursor: "pointer", color: num(item.discount) > 0 ? "var(--success)" : "var(--text-muted)", padding: 2, display: "flex" }}
+              className="billing-cart-item-button"
+              style={{ background: "none", border: "none", cursor: "pointer", color: num(item.discount) > 0 ? "var(--success)" : "var(--text-muted)", display: "flex" }}
             >
               <Percent size={13} />
             </button>
