@@ -1,0 +1,59 @@
+{
+  "projectType": "webapp",
+  "devServer": {
+    "command": "npm",
+    "args": [
+      "start"
+    ],
+    "url": "http://localhost:3000/",
+    "readyTimeoutSeconds": 120
+  },
+  "setup": [],
+  "assertions": [
+    {
+      "name": "tests-pass",
+      "kind": "process",
+      "command": "npm",
+      "args": [
+        "test"
+      ],
+      "verificationMethod": "test-results",
+      "expected": "0",
+      "timeoutSeconds": 300
+    },
+    {
+      "name": "tablet-keyboard-open-checkout",
+      "kind": "process",
+      "command": "npx",
+      "args": [
+        "playwright",
+        "test",
+        "e2e/responsive.spec.js",
+        "--grep",
+        "tablet cart sheet and checkout controls remain reachable with the keyboard open"
+      ],
+      "env": {
+        "CI": ""
+      },
+      "verificationMethod": "exit-code",
+      "expected": "0",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "frontend-serves-home",
+      "kind": "http-probe",
+      "startCommand": "npm",
+      "startArgs": [
+        "start"
+      ],
+      "env": {
+        "PORT": "3001",
+        "BROWSER": "none"
+      },
+      "url": "http://localhost:3001/",
+      "verificationMethod": "http-status",
+      "expected": "200",
+      "timeoutSeconds": 120
+    }
+  ]
+}

@@ -227,3 +227,45 @@ test("mobile checkout controls fit a narrow viewport", async ({ page }) => {
   expect(paymentColumns).toBeGreaterThan(1);
   await checkViewport(page, "/billing checkout", 320, 760);
 });
+
+test("tablet cart sheet and checkout controls remain reachable with the keyboard open", async ({ page }) => {
+  await installMockApi(page, createMockState());
+  await signIn(page, "owner@freshmart.com", "owner-password");
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/billing");
+
+  const search = page.getByPlaceholder("Search product name / scan or type barcode, then Enter…");
+  await search.fill("8901001001001");
+  await search.press("Enter");
+
+  const cart = page.locator(".billing-cart");
+  await expect(cart.getByText("Basmati Rice")).toBeVisible();
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await expect(cart).toHaveClass(/open/);
+
+  await cart.getByLabel("Quantity").focus();
+  // Shrinking the visual viewport simulates the space taken by a tablet software keyboard.
+  await page.setViewportSize({ width: 1024, height: 420 });
+  const checkoutFromCart = cart.getByRole("button", { name: /Checkout/ });
+  await expect(checkoutFromCart).toBeVisible();
+  await checkoutFromCart.scrollIntoViewIfNeeded();
+  await expect(checkoutFromCart).toBeInViewport();
+  await checkoutFromCart.click();
+
+  const checkout = page.getByRole("dialog", { name: "Complete sale" });
+  await expect(checkout).toBeVisible();
+  const cashReceived = checkout.locator('input[inputmode="decimal"]');
+  await expect(cashReceived).toBeFocused();
+  await page.setViewportSize({ width: 1024, height: 420 });
+  await expect
+    .poll(() => checkout.evaluate((dialog) => dialog.scrollHeight > dialog.clientHeight))
+    .toBe(true);
+
+  const confirmSale = checkout.getByRole("button", { name: /Confirm sale/ });
+  await expect(confirmSale).toBeEnabled();
+  await confirmSale.scrollIntoViewIfNeeded();
+  await expect(confirmSale).toBeInViewport();
+  await checkout.getByRole("button", { name: "Back" }).click();
+  await expect(checkout).toBeHidden();
+});

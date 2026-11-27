@@ -1,0 +1,115 @@
+{
+  "planHash": "38a7ece799a0eb390c6d6b7ec4c058814067c77c8692be260277ae71feef92f7",
+  "phase": "standalone",
+  "recordedAtUtc": "2026-11-27T12:14:04.1817771Z",
+  "retryCount": 3,
+  "resetBaseline": false,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 0,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E supermarket-frontend@1.0.0 test\r\n\u003E craco test --watchAll=false\r\n\r\n(node:24112) [DEP0040] DeprecationWarning: The \u0060punycode\u0060 module is deprecated. Please use a userland alternative instead.\r\n(Use \u0060node --trace-deprecation ...\u0060 to show where the warning was created)\r\nPASS src/utils/billMath.test.js\r\n(node:24644) [DEP0040] DeprecationWarning: The \u0060punycode\u0060 module is deprecated. Please use a userland alternative instead.\r\n(Use \u0060node --trace-deprecation ...\u0060 to show where the warning was created)\r\nPASS src/utils/helpers.test.js\r\n(node:5176) [DEP0040] DeprecationWarning: The \u0060punycode\u0060 module is deprecated. Please use a userland alternative instead.\r\n(Use \u0060node --trace-deprecation ...\u0060 to show where the warning was created)\r\nPASS src/utils/persistentCart.test.js\r\n(node:28396) [DEP0040] DeprecationWarning: The \u0060punycode\u0060 module is deprecated. Please use a userland alternative instead.\r\n(Use \u0060node --trace-deprecation ...\u0060 to show where the warning was created)\r\nPASS src/utils/productImport.test.js\r\n\r\nTest Suites: 4 passed, 4 total\r\nTests:       12 passed, 12 total\r\nSnapshots:   0 total\r\nTime:        4.666 s\r\nRan all test suites.\r\n",
+        "durationMs": 7884,
+        "testResults": {
+          "testFramework": "jest",
+          "runnerDetectedFrom": "output_banner",
+          "testsTotal": 12,
+          "testsPassed": 12,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": false
+        }
+      },
+      {
+        "name": "tablet-keyboard-open-checkout",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "(node:15332) ExperimentalWarning: CommonJS module C:\\Users\\devan\\AppData\\Roaming\\npm\\node_modules\\npm\\node_modules\\debug\\src\\node.js is loading ES Module C:\\Users\\devan\\AppData\\Roaming\\npm\\node_modules\\npm\\node_modules\\supports-color\\index.js using require().\r\nSupport for loading ES Module in require() is an experimental feature and might change at any time\r\n(Use \u0060node --trace-warnings ...\u0060 to show where the warning was created)\r\n\r\nRunning 1 test using 1 worker\r\n\r\n  ok 1 [chromium] \u203A e2e\\responsive.spec.js:231:1 \u203A tablet cart sheet and checkout controls remain reachable with the keyboard open (3.2s)\r\n\r\n  1 passed (5.7s)\r\n\r\nTo open last HTML report run:\r\n\u001B[36m\u001B[39m\r\n\u001B[36m  npx playwright show-report\u001B[39m\r\n\u001B[36m\u001B[39m\r\n",
+        "durationMs": 10196
+      },
+      {
+        "name": "frontend-serves-home",
+        "kind": "http-probe",
+        "verificationMethod": "http-status",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": null,
+        "outputSample": "HTTP 200\n\u003C!DOCTYPE html\u003E\n\u003Chtml lang=\u0022en\u0022\u003E\n  \u003Chead\u003E\n    \u003Cmeta charset=\u0022utf-8\u0022 /\u003E\n    \u003C!-- viewport-fit=cover lets the layout use the safe-area insets on notched tablets --\u003E\n    \u003Cmeta name=\u0022viewport\u0022 content=\u0022width=device-width, initial-scale=1, viewport-fit=cover\u0022 /\u003E\n    \u003Cmeta name=\u0022description\u0022 content=\u0022Supermarket billing \u0026amp; inventory \u2014 point of sale, GST invoices, stock, customers and reports.\u0022 /\u003E\n    \u003Ctitle\u003ESuperMart \u2014 Billing System\u003C/title\u003E\n\n    \u003C!-- Matches the light/dark palette so the browser chrome does not flash white --\u003E\n    \u003Cmeta name=\u0022theme-color\u0022 content=\u0022#f4f0e7\u0022 media=\u0022(prefers-color-scheme: light)\u0022 /\u003E\n    \u003Cmeta name=\u0022theme-color\u0022 content=\u0022#15130f\u0022 media=\u0022(prefers-color-scheme: dark)\u0022 /\u003E\n\n    \u003C!-- Installable on a counter tablet, and runs full-screen like a native till --\u003E\n    \u003Clink rel=\u0022manifest\u0022 href=\u0022/manifest.json\u0022 /\u003E\n    \u003Cmeta name=\u0022mobile-web-app-capable\u0022 content=\u0022yes\u0022 /\u003E\n    \u003Cmeta name=\u0022apple-mobile-web-app-capable\u0022 content=\u0022yes\u0022 /\u003E\n    \u003Cmeta name=\u0022apple-mobile-web-app-status-bar-style\u0022 content=\u0022default\u0022 /\u003E\n    \u003Cmeta name=\u0022apple-mobile-web-app-title\u0022 content=\u0022SuperMart\u0022 /\u003E\n    \u003Cmeta name=\u0022format-detection\u0022 content=\u0022telephone=no\u0022 /\u003E\n    \u003Clink rel=\u0022icon\u0022 href=\u0022/favicon.ico\u0022 sizes=\u0022any\u0022 /\u003E\n    \u003Clink rel=\u0022icon\u0022 href=\u0022/favicon.svg\u0022 type=\u0022image/svg\u002Bxml\u0022 /\u003E\n    \u003Clink rel=\u0022apple-touch-icon\u0022 href=\u0022/icon-192.png\u0022 /\u003E\n\n    \u003Clink rel=\u0022preconnect\u0022 href=\u0022https://fonts.googleapis.com\u0022\u003E\n    \u003Clink rel=\u0022preconnect\u0022 href=\u0022https://fonts.gstatic.com\u0022 crossorigin\u003E\n    \u003Clink href=\u0022https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300\u0026family=Outfit:wght@300;400;500;600;700\u0026family=JetBrains\u002BMono:wght@400;500\u0026display=swap\u0022 rel=\u0022stylesheet\u0022\u003E\n\n    \u003Cstyle\u003E\n      /* Paint the stored theme before React mounts so the till does not flash the wrong\n         colour scheme on every reload. Mirrors applyTheme() in src/utils/theme.js. */\n      html { background: #f4f0e7; }\n      html[data-theme=\u0022dark\u0022] { background: #15130f; }\n    \u003C/style\u003E\n    \u003Cscript\u003E\n      (function () {\n        try {\n          var t = JSON.parse(localStorage.getItem(\u0022theme\u0022) || \u0022null\u0022);\n          var mode = t \u0026\u0026 t.themeMode;\n          if (mode === \u0022system\u0022 || !mode) {\n            mode = window.matchMedia \u0026\u0026 window.matchMedia(\u0022(prefers-color-scheme: dark)\u0022).matches ? \u0022dark\u0022 : \u0022light\u0022;\n          }\n          document.documentElement.setAttribute(\u0022data-theme\u0022, mode === \u0022dark\u0022 ? \u0022dark\u0022 : \u0022light\u0022);\n        } catch (e) {\n          document.documentElement.setAttribute(\u0022data-theme\u0022, \u0022light\u0022);\n        }\n      })();\n    \u003C/script\u003E\n  \u003Cscript defer src=\u0022/static/js/bundle.js\u0022\u003E\u003C/script\u003E\u003C/head\u003E\n  \u003Cbody\u003E\n    \u003Cnoscript\u003E\n      \u003Cdiv style=\u0022font-family: system-ui, sans-serif; max-width: 460px; margin: 15vh auto; padding: 24px; text-align: center\u0022\u003E\n        \u003Ch1 style=\u0022font-size: 20px\u0022\u003EJavaScript is switched off\u003C/h1\u003E\n        \u003Cp style=\u0022font-size: 14px; line-height: 1.6; color: #555\u0022\u003E\n          This billing system needs JavaScript to run. Please enable it in your browser settings and reload the page.\n        \u003C/p\u003E\n      \u003C/div\u003E\n    \u003C/noscript\u003E\n    \u003Cdiv id=\u0022root\u0022\u003E\u003C/div\u003E\n  \u003C/body\u003E\n\u003C/html\u003E\n\n--- server output ---\n\r\n\u003E supermarket-frontend@1.0.0 start\r\n\u003E craco start\r\n\r\n(node:32472) [DEP_WEBPACK_DEV_SERVER_ON_AFTER_SETUP_MIDDLEWARE] DeprecationWarning: \u0027onAfterSetupMiddleware\u0027 option is deprecated. Please use the \u0027setupMiddlewares\u0027 option.\r\n(Use \u0060node --trace-deprecation ...\u0060 to show where the warning was created)\r\n(node:32472) [DEP_WEBPACK_DEV_SERVER_ON_BEFORE_SETUP_MIDDLEWARE] DeprecationWarning: \u0027onBeforeSetupMiddleware\u0027 option is deprecated. Please use the \u0027setupMiddlewares\u0027 option.\r\nStarting the development server...\r\n\r\nCompiled successfully!\r\n\r\nYou can now view supermarket-frontend in the browser.\r\n\r\n  Local:            http://localhost:3001\r\n  On Your Network:  http://192.168.1.42:3001\r\n\r\nNote that the development build is not optimized.\r\nTo create a production build, use npm run build.\r\n\r\nwebpack compiled \u001B[1m\u001B[32msuccessfully\u001B[39m\u001B[22m\r\n",
+        "durationMs": 11715
+      }
+    ],
+    "executions": [
+      {
+        "source": "devServer",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "start"
+        ],
+        "cwd": "C:\\Users\\devan\\Downloads\\supermarket-billing-saas\\frontend",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "test"
+        ],
+        "cwd": "C:\\Users\\devan\\Downloads\\supermarket-billing-saas\\frontend",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "tablet-keyboard-open-checkout",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npx.CMD",
+        "args": [
+          "playwright",
+          "test",
+          "e2e/responsive.spec.js",
+          "--grep",
+          "tablet cart sheet and checkout controls remain reachable with the keyboard open"
+        ],
+        "cwd": "C:\\Users\\devan\\Downloads\\supermarket-billing-saas\\frontend",
+        "env": {
+          "CI": ""
+        },
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "frontend-serves-home",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "start"
+        ],
+        "cwd": "C:\\Users\\devan\\Downloads\\supermarket-billing-saas\\frontend",
+        "env": {
+          "PORT": "3001",
+          "BROWSER": "none"
+        },
+        "prependPath": [],
+        "platform": "win32"
+      }
+    ]
+  }
+}
