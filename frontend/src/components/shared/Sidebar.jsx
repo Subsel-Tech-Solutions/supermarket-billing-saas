@@ -285,8 +285,8 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebarCollapsed") === "1");
   const [mobileOpen, setMobileOpen] = useState(false);
   const { pathname } = useLocation();
-  const { settings } = useSettings();
-  const { shop } = useAuth();
+  const { settings, platform } = useSettings();
+  const { shop, isPlatformOnly } = useAuth();
 
   const toggle = () => {
     localStorage.setItem("sidebarCollapsed", collapsed ? "0" : "1");
@@ -302,6 +302,11 @@ export default function Sidebar() {
       else root.style.removeProperty("--desktop-sidebar-width");
     };
   }, [collapsed]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("platform-admin", isPlatformOnly);
+    return () => document.documentElement.classList.remove("platform-admin");
+  }, [isPlatformOnly]);
 
   // Close on navigation (a tap on a link) and on Escape, and stop the page behind the
   // drawer from scrolling under it.
@@ -323,6 +328,30 @@ export default function Sidebar() {
 
   return (
     <>
+      {isPlatformOnly && (
+        <nav className="admin-mobile-bottom-nav no-print" aria-label="Admin navigation">
+          {[
+            { to: "/admin", icon: LayoutDashboard, label: "Dashboard", end: true },
+            { to: "/admin/businesses", icon: Store, label: "Businesses" },
+            { to: "/admin/subscriptions", icon: CreditCard, label: "Subscriptions" },
+            { to: "/admin/users", icon: Users, label: "Users" },
+          ].map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => (isActive ? "active" : "")}
+            >
+              <item.icon size={17} />
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+          <button type="button" onClick={() => setMobileOpen(true)} aria-label="Open more admin navigation">
+            <Menu size={17} />
+            <span>More</span>
+          </button>
+        </nav>
+      )}
       {/* Mobile top bar. The old build had only a floating button, so every page needed
           its own guesswork padding to avoid it covering the title. A real bar reserves
           the space once, and shows which shop the till belongs to. */}
@@ -363,7 +392,7 @@ export default function Sidebar() {
           className="truncate-1"
           style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-primary)", minWidth: 0 }}
         >
-          {settings.businessName || shop?.name || "SuperMart"}
+          {isPlatformOnly ? (platform.platformName || "SuperMart POS") : (settings.businessName || shop?.name || "SuperMart")}
         </span>
       </div>
 

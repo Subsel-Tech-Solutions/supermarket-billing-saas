@@ -157,7 +157,7 @@ function Delta({ value }) {
 
 function MetricCard({ icon: Icon, tint, label, value, delta }) {
   return (
-    <div className="stat-card fade-in" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="stat-card admin-stat-card fade-in" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div
         style={{
           width: 44,
@@ -212,7 +212,7 @@ function AdminDashboard({ stats, shops, onOpen, onCreate, go }) {
 
   return (
     <>
-      <div className="grid-stats stagger" style={{ marginBottom: 16 }}>
+      <div className="grid-stats admin-stats-grid stagger" style={{ marginBottom: 16 }}>
         <MetricCard icon={Store} tint="59, 130, 246" label="Total Businesses" value={stats.totalShops.toLocaleString()} delta={g.businesses} />
         <MetricCard icon={Users} tint="52, 168, 110" label="Total Users" value={stats.totalUsers.toLocaleString()} delta={g.users} />
         <MetricCard icon={CreditCard} tint="217, 160, 54" label="Active Subscriptions" value={stats.activeSubscriptions.toLocaleString()} delta={g.subscriptions} />
