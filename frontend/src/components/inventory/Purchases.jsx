@@ -370,7 +370,7 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
       </div>
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>New item? Create it first in Stock → Add product, then add it here.</p>
 
-      <div className="table-scroll-wrapper table-stack" style={{ border: "1px solid var(--border)", borderRadius: 10 }}>
+      <div className="table-scroll-wrapper table-stack purchase-table" style={{ border: "1px solid var(--border)", borderRadius: 10 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
           <thead>
             <tr style={{ background: "var(--bg-sunken)", fontSize: 11.5, color: "var(--text-muted)", textAlign: "left" }}>
@@ -408,7 +408,7 @@ function PurchaseForm({ isOpen, onClose, onSaved, suppliers }) {
                   <input className="input-field" type={type} value={it[k]} onChange={(e) => setItem(i, k, e.target.value)} style={{ width: w, padding: "5px 7px", fontSize: 12.5 }} />
                 );
               return (
-                <tr key={it.productId} style={{ borderTop: "1px solid var(--border)" }}>
+                <tr key={it.productId} className="purchase-item-row" style={{ borderTop: "1px solid var(--border)" }}>
                   <td data-primary style={{ ...cell, fontWeight: 500, maxWidth: 180 }}>{it.name}</td>
                   <td data-label="Qty" style={cell}>{inp("quantity", 70)}</td>
                   <td data-label="Cost (excl. GST)" style={cell}>{inp("costPrice", 90)}</td>

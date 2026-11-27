@@ -647,7 +647,7 @@
   -webkit-overflow-scrolling: touch;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .table-stack {
     overflow-x: visible;
   }
@@ -728,6 +728,65 @@
   /* Row striping/hover makes no sense once rows are cards */
   .table-stack .table-row-hover:hover {
     background: var(--bg-card);
+  }
+
+  /* Purchase entry cards keep editable fields in a readable 2-column grid.
+     Full-width fields use the full card where one value needs extra room. */
+  .purchase-table tr.purchase-item-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px 8px;
+    padding: 12px;
+  }
+  .purchase-table tr.purchase-item-row td {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 4px;
+    min-width: 0;
+    width: 100% !important;
+    text-align: left !important;
+    padding: 0 !important;
+  }
+  .purchase-table tr.purchase-item-row td::before {
+    width: 100%;
+    flex: none;
+    text-align: left;
+  }
+  .purchase-table tr.purchase-item-row td[data-primary] {
+    grid-column: 1 / -1;
+    margin-bottom: 2px;
+  }
+  .purchase-table tr.purchase-item-row td[data-label="Expiry"],
+  .purchase-table tr.purchase-item-row td[data-label="Batch"],
+  .purchase-table tr.purchase-item-row td[data-label="Amount"],
+  .purchase-table tr.purchase-item-row td[data-actions] {
+    grid-column: span 1;
+  }
+  .purchase-table tr.purchase-item-row td[data-label="Amount"] {
+    justify-content: flex-end;
+    min-height: 58px;
+  }
+  .purchase-table tr.purchase-item-row td[data-actions] {
+    align-items: flex-end;
+    justify-content: flex-end;
+    border-top: none !important;
+    margin-top: 0;
+    padding-top: 0 !important;
+  }
+  .purchase-table tr.purchase-item-row td[data-actions]::before {
+    content: none;
+  }
+  .purchase-table tr.purchase-item-row .input-field,
+  .purchase-table tr.purchase-item-row select.input-field {
+    width: 100% !important;
+    max-width: none;
+    min-width: 0;
+  }
+  .purchase-table tr.purchase-item-row td[data-label="Amount"] {
+    font-size: 13.5px;
   }
 }
 

@@ -291,7 +291,7 @@ function ReportBody({ tab, data }) {
   if (tab === "products")
     return (
       <div className="card" style={{ overflow: "hidden" }}>
-        <Table stack={false}>
+        <Table>
           <thead>
             <tr>
               <Th>#</Th>
@@ -305,14 +305,14 @@ function ReportBody({ tab, data }) {
           <tbody>
             {data.topProducts.map((p, i) => (
               <tr key={p.productId}>
-                <Td muted>{i + 1}</Td>
-                <Td style={{ fontWeight: 500 }}>{p.productName}</Td>
-                <Td align="right" mono>{formatQty(p.totalSold)}</Td>
-                <Td align="right" mono>{formatCurrency(p.totalRevenue)}</Td>
-                <Td align="right" mono style={{ color: p.profit < 0 ? "var(--danger)" : "var(--success)" }}>
+                <Td label="#" muted>{i + 1}</Td>
+                <Td primary style={{ fontWeight: 500 }}>{p.productName}</Td>
+                <Td label="Qty sold" align="right" mono>{formatQty(p.totalSold)}</Td>
+                <Td label="Revenue" align="right" mono>{formatCurrency(p.totalRevenue)}</Td>
+                <Td label="Profit" align="right" mono style={{ color: p.profit < 0 ? "var(--danger)" : "var(--success)" }}>
                   {formatCurrency(p.profit)}
                 </Td>
-                <Td align="right" mono>{p.orderCount}</Td>
+                <Td label="Bills" align="right" mono>{p.orderCount}</Td>
               </tr>
             ))}
           </tbody>
@@ -324,7 +324,7 @@ function ReportBody({ tab, data }) {
   if (tab === "categories")
     return (
       <div className="card" style={{ overflow: "hidden" }}>
-        <Table stack={false}>
+        <Table>
           <thead>
             <tr>
               <Th>Category</Th>
@@ -336,10 +336,10 @@ function ReportBody({ tab, data }) {
           <tbody>
             {data.categories.map((c) => (
               <tr key={c.category}>
-                <Td style={{ fontWeight: 500 }}>{c.category}</Td>
-                <Td align="right" mono>{formatQty(c.qty)}</Td>
-                <Td align="right" mono>{formatCurrency(c.revenue)}</Td>
-                <Td align="right" mono>{formatCurrency(c.profit)}</Td>
+                <Td primary style={{ fontWeight: 500 }}>{c.category}</Td>
+                <Td label="Qty" align="right" mono>{formatQty(c.qty)}</Td>
+                <Td label="Revenue" align="right" mono>{formatCurrency(c.revenue)}</Td>
+                <Td label="Profit" align="right" mono>{formatCurrency(c.profit)}</Td>
               </tr>
             ))}
           </tbody>
@@ -359,7 +359,7 @@ function ReportBody({ tab, data }) {
         </div>
         <div className="card" style={{ overflow: "hidden", marginBottom: 16 }}>
           <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Rate-wise summary {data.gstNumber ? `· GSTIN ${data.gstNumber}` : ""}</div>
-          <Table stack={false} minWidth={720}>
+          <Table minWidth={720}>
             <thead>
               <tr>
                 <Th>GST rate</Th>
@@ -377,25 +377,25 @@ function ReportBody({ tab, data }) {
                   GSTR-1 reports CGST+SGST and IGST separately. */}
               {data.slabs.map((s) => (
                 <tr key={`${s.rate}-${s.interState ? "inter" : "intra"}`}>
-                  <Td>{s.rate}%</Td>
-                  <Td muted style={{ fontSize: 12.5 }}>{s.interState ? "Inter-state" : "Intra-state"}</Td>
-                  <Td align="right" mono>{formatCurrency(s.taxable)}</Td>
-                  <Td align="right" mono muted={!s.cgst}>{formatCurrency(s.cgst)}</Td>
-                  <Td align="right" mono muted={!s.sgst}>{formatCurrency(s.sgst)}</Td>
-                  <Td align="right" mono muted={!s.igst}>{formatCurrency(s.igst)}</Td>
-                  <Td align="right" mono>{formatCurrency(s.tax)}</Td>
-                  <Td align="right" mono>{formatCurrency(s.total)}</Td>
+                  <Td primary>{s.rate}%</Td>
+                  <Td label="Supply" muted style={{ fontSize: 12.5 }}>{s.interState ? "Inter-state" : "Intra-state"}</Td>
+                  <Td label="Taxable" align="right" mono>{formatCurrency(s.taxable)}</Td>
+                  <Td label="CGST" align="right" mono muted={!s.cgst}>{formatCurrency(s.cgst)}</Td>
+                  <Td label="SGST" align="right" mono muted={!s.sgst}>{formatCurrency(s.sgst)}</Td>
+                  <Td label="IGST" align="right" mono muted={!s.igst}>{formatCurrency(s.igst)}</Td>
+                  <Td label="Total tax" align="right" mono>{formatCurrency(s.tax)}</Td>
+                  <Td label="Invoice value" align="right" mono>{formatCurrency(s.total)}</Td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr style={{ fontWeight: 600, background: "var(--bg-sunken)" }}>
-                <Td colSpan={2}>Total</Td>
-                <Td align="right" mono>{formatCurrency(data.totals.taxable)}</Td>
-                <Td align="right" mono>{formatCurrency(data.totals.cgst)}</Td>
-                <Td align="right" mono>{formatCurrency(data.totals.sgst)}</Td>
-                <Td align="right" mono>{formatCurrency(data.totals.igst)}</Td>
-                <Td align="right" mono>{formatCurrency(data.totals.outputTax)}</Td>
+                <Td primary colSpan={2}>Total</Td>
+                <Td label="Taxable" align="right" mono>{formatCurrency(data.totals.taxable)}</Td>
+                <Td label="CGST" align="right" mono>{formatCurrency(data.totals.cgst)}</Td>
+                <Td label="SGST" align="right" mono>{formatCurrency(data.totals.sgst)}</Td>
+                <Td label="IGST" align="right" mono>{formatCurrency(data.totals.igst)}</Td>
+                <Td label="Total tax" align="right" mono>{formatCurrency(data.totals.outputTax)}</Td>
                 <Td />
               </tr>
             </tfoot>
@@ -403,7 +403,7 @@ function ReportBody({ tab, data }) {
         </div>
         <div className="card" style={{ overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--border)" }}>HSN summary</div>
-          <Table stack={false}>
+          <Table>
             <thead>
               <tr>
                 <Th>HSN</Th>
@@ -416,11 +416,11 @@ function ReportBody({ tab, data }) {
             <tbody>
               {data.hsn.map((h) => (
                 <tr key={`${h.hsn}-${h.rate}`}>
-                  <Td mono>{h.hsn}</Td>
-                  <Td>{h.rate}%</Td>
-                  <Td align="right" mono>{formatQty(h.qty)}</Td>
-                  <Td align="right" mono>{formatCurrency(h.taxable)}</Td>
-                  <Td align="right" mono>{formatCurrency(h.tax)}</Td>
+                  <Td primary mono>{h.hsn}</Td>
+                  <Td label="Rate">{h.rate}%</Td>
+                  <Td label="Qty" align="right" mono>{formatQty(h.qty)}</Td>
+                  <Td label="Taxable" align="right" mono>{formatCurrency(h.taxable)}</Td>
+                  <Td label="Tax" align="right" mono>{formatCurrency(h.tax)}</Td>
                 </tr>
               ))}
             </tbody>
@@ -446,7 +446,7 @@ function ReportBody({ tab, data }) {
         </p>
         <div className="grid-main-side">
           <div className="card" style={{ overflow: "hidden" }}>
-            <Table stack={false}>
+            <Table>
               <thead>
                 <tr>
                   <Th>Date</Th>
@@ -458,10 +458,10 @@ function ReportBody({ tab, data }) {
               <tbody>
                 {data.daily.map((d) => (
                   <tr key={d.date}>
-                    <Td>{formatDate(d.date)}</Td>
-                    <Td align="right" mono>{formatCurrency(d.revenue)}</Td>
-                    <Td align="right" mono>{formatCurrency(d.cost)}</Td>
-                    <Td align="right" mono style={{ color: d.profit < 0 ? "var(--danger)" : "var(--success)" }}>
+                    <Td primary>{formatDate(d.date)}</Td>
+                    <Td label="Sales" align="right" mono>{formatCurrency(d.revenue)}</Td>
+                    <Td label="Cost" align="right" mono>{formatCurrency(d.cost)}</Td>
+                    <Td label="Gross profit" align="right" mono style={{ color: d.profit < 0 ? "var(--danger)" : "var(--success)" }}>
                       {formatCurrency(d.profit)}
                     </Td>
                   </tr>
@@ -487,7 +487,7 @@ function ReportBody({ tab, data }) {
   if (tab === "staff")
     return (
       <div className="card" style={{ overflow: "hidden" }}>
-        <Table stack={false}>
+        <Table>
           <thead>
             <tr>
               <Th>Cashier</Th>
@@ -500,11 +500,11 @@ function ReportBody({ tab, data }) {
           <tbody>
             {data.staff.map((s) => (
               <tr key={s.cashier}>
-                <Td style={{ fontWeight: 500 }}>{s.cashier}</Td>
-                <Td align="right" mono>{s.bills}</Td>
-                <Td align="right" mono>{formatCurrency(s.revenue)}</Td>
-                <Td align="right" mono>{formatCurrency(s.discount)}</Td>
-                <Td align="right" mono style={{ color: s.cancelled ? "var(--danger)" : undefined }}>
+                <Td primary style={{ fontWeight: 500 }}>{s.cashier}</Td>
+                <Td label="Bills" align="right" mono>{s.bills}</Td>
+                <Td label="Sales" align="right" mono>{formatCurrency(s.revenue)}</Td>
+                <Td label="Discounts given" align="right" mono>{formatCurrency(s.discount)}</Td>
+                <Td label="Cancelled" align="right" mono style={{ color: s.cancelled ? "var(--danger)" : undefined }}>
                   {s.cancelled}
                 </Td>
               </tr>
@@ -524,7 +524,7 @@ function ReportBody({ tab, data }) {
           <MiniStat label="Closing stock value (cost)" value={formatCurrency(value)} tone="accent" />
         </div>
         <div className="card" style={{ overflow: "hidden" }}>
-          <Table minWidth={900} stack={false}>
+          <Table minWidth={900}>
             <thead>
               <tr>
                 <Th>Product</Th>
@@ -539,18 +539,18 @@ function ReportBody({ tab, data }) {
             <tbody>
               {data.map((r) => (
                 <tr key={r.id}>
-                  <Td>
+                  <Td primary>
                     <p style={{ fontWeight: 500 }}>{r.name}</p>
                     <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{[r.category, r.barcode].filter(Boolean).join(" · ")}</p>
                   </Td>
-                  <Td align="right" mono>{formatQty(r.openingStock)}</Td>
-                  <Td align="right" mono>{formatQty(r.inward)}</Td>
-                  <Td align="right" mono>{formatQty(r.soldQty)}</Td>
-                  <Td align="right" mono>{formatQty(r.adjustment)}</Td>
-                  <Td align="right" mono style={{ fontWeight: 600 }}>
+                  <Td label="Opening" align="right" mono>{formatQty(r.openingStock)}</Td>
+                  <Td label="Inward" align="right" mono>{formatQty(r.inward)}</Td>
+                  <Td label="Sold" align="right" mono>{formatQty(r.soldQty)}</Td>
+                  <Td label="Adjust" align="right" mono>{formatQty(r.adjustment)}</Td>
+                  <Td label="Closing" align="right" mono style={{ fontWeight: 600 }}>
                     {formatQty(r.closingStock, r.unit)}
                   </Td>
-                  <Td align="right" mono>{formatCurrency(r.stockValue)}</Td>
+                  <Td label="Value" align="right" mono>{formatCurrency(r.stockValue)}</Td>
                 </tr>
               ))}
             </tbody>
@@ -570,7 +570,7 @@ function ReportBody({ tab, data }) {
           <MiniStat label="Stock value at risk" value={formatCurrency(data.valueAtRisk)} />
         </div>
         <div className="card" style={{ overflow: "hidden" }}>
-          <Table stack={false}>
+          <Table>
             <thead>
               <tr>
                 <Th>Product</Th>
@@ -583,11 +583,11 @@ function ReportBody({ tab, data }) {
             <tbody>
               {rows.map((p) => (
                 <tr key={p.id}>
-                  <Td style={{ fontWeight: 500 }}>{p.name}</Td>
-                  <Td muted>{p.batchNo || "—"}</Td>
-                  <Td>{formatDate(p.expiryDate)}</Td>
-                  <Td align="right" mono>{formatQty(p.quantity, p.unit)}</Td>
-                  <Td align="center">{p.expiryDate < data.today ? <Pill tone="danger">Expired</Pill> : <Pill tone="warning">Expiring</Pill>}</Td>
+                  <Td primary style={{ fontWeight: 500 }}>{p.name}</Td>
+                  <Td label="Batch" muted>{p.batchNo || "—"}</Td>
+                  <Td label="Expiry">{formatDate(p.expiryDate)}</Td>
+                  <Td label="Stock" align="right" mono>{formatQty(p.quantity, p.unit)}</Td>
+                  <Td label="Status" align="center">{p.expiryDate < data.today ? <Pill tone="danger">Expired</Pill> : <Pill tone="warning">Expiring</Pill>}</Td>
                 </tr>
               ))}
             </tbody>
@@ -650,7 +650,7 @@ function ReportBody({ tab, data }) {
           <MiniStat label="Staff & Setting Changes" value={staffCount} tone="accent" />
         </div>
         <div className="card" style={{ overflow: "hidden" }}>
-          <Table stack={false}>
+          <Table>
             <thead>
               <tr>
                 <Th>Timestamp</Th>
@@ -663,11 +663,11 @@ function ReportBody({ tab, data }) {
             <tbody>
               {logs.map((l) => (
                 <tr key={l.id}>
-                  <Td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{formatDate(l.createdAt)}</Td>
-                  <Td>
+                  <Td primary style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{formatDate(l.createdAt)}</Td>
+                  <Td label="Action">
                     <Pill tone={actionTone(l.action)}>{(l.action || "").replace(/_/g, " ")}</Pill>
                   </Td>
-                  <Td>
+                  <Td label="Target entity">
                     <span style={{ fontWeight: 500 }}>{l.entityType}</span>
                     {l.entityId && (
                       <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: 6 }}>
@@ -675,7 +675,7 @@ function ReportBody({ tab, data }) {
                       </span>
                     )}
                   </Td>
-                  <Td>
+                  <Td label="User">
                     <span style={{ fontWeight: 500 }}>{l.username || "system"}</span>
                     {l.userRole && (
                       <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: 6 }}>
@@ -683,7 +683,7 @@ function ReportBody({ tab, data }) {
                       </span>
                     )}
                   </Td>
-                  <Td>{renderAuditDiff(l)}</Td>
+                  <Td label="Details / Changes">{renderAuditDiff(l)}</Td>
                 </tr>
               ))}
             </tbody>

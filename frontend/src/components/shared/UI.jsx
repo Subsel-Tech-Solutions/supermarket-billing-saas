@@ -623,9 +623,8 @@ export const Td = ({
 );
 
 /**
- * `stack` (default) turns rows into cards below 760px. Pass `stack={false}` for tables
- * that only read correctly as a grid — a GST slab table, for instance — and they keep
- * scrolling horizontally instead.
+ * `stack` (default) turns rows into cards on phones and tablets up to 1024px.
+ * Pass `stack={false}` only for rare read-only grids that must remain horizontally scrollable.
  */
 export const Table = ({ children, minWidth = 640, stack = true }) => (
   <div className={`table-scroll-wrapper${stack ? " table-stack" : ""}`}>
